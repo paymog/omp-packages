@@ -244,7 +244,7 @@ export function detailPage(p: Pkg, reports: Report[], x: Extra | null): string {
       ${p.author ? `<span>${icon("user", 14)}${esc(p.author)}</span>` : ""}
       <span>${icon("clock", 14)}Published ${ago(p.published_at)}</span>
       ${x?.license ? `<span>${icon("scale", 14)}${esc(x.license)}</span>` : ""}
-      <span class="num">${icon("download", 14)}${whole.format(p.monthly_downloads)} downloads/mo</span>
+      <span class="num">${icon("download", 14)}~${compact.format(p.monthly_downloads)} downloads/mo</span>
     </div>
   </header>
   <div class="pkg-grid">
@@ -295,7 +295,7 @@ export function detailPage(p: Pkg, reports: Report[], x: Extra | null): string {
           <dt>Published</dt><dd>${p.published_at ? esc(p.published_at.slice(0, 10)) : "unknown"}</dd>
           ${row("First published", x?.created && esc(x.created.slice(0, 10)))}
           ${row("Versions", x && whole.format(x.versions), "num")}
-          <dt>Downloads</dt><dd class="num">${whole.format(p.monthly_downloads)} / month</dd>
+          <dt>Downloads</dt><dd class="num">~${compact.format(p.monthly_downloads)} / month</dd>
           ${row("Unpacked size", x?.size ? bytes.format(x.size) : null, "num")}
           ${row("Files", x?.files ? whole.format(x.files) : null, "num")}
           ${row("Provides", x?.provides.map(([k, n]) => `${esc(k)} <span class="quiet num">${n}</span>`).join(", "))}
@@ -333,7 +333,7 @@ export function listingPage(): string {
   <h2>3. Publish to npm</h2>
   <pre><code>npm publish --access public</code></pre>
   <h2>4. Wait for the sync</h2>
-  <p>The catalog reads npm every 5 minutes, a few pages at a time. A full pass takes about an hour. Then users can install your package with <code>omp plugin install &lt;name&gt;</code>.</p>
+  <p>The catalog reads npm every 30 minutes, a few pages at a time. A full pass takes about 6 hours. Then users can install your package with <code>omp plugin install &lt;name&gt;</code>.</p>
   <h2>pi packages</h2>
   <p>Packages with only the <code>pi-package</code> keyword are listed as <strong>Untested on omp</strong> until users report a result. Packages that are only on GitHub are not listed.</p>
 </div>`;
@@ -558,7 +558,7 @@ export function layout(title: string, body: string, opts: { q?: string; nav?: "l
   <nav aria-label="Site"><a href="/get-listed"${opts.nav === "listing" ? ' aria-current="page"' : ""}>Get listed</a><a href="https://github.com/can1357/oh-my-pi">oh-my-pi${icon("external", 13)}</a></nav>
 </div></header>
 <main>${body}</main>
-<footer class="site-foot"><div class="wrap">Package data from the npm registry, synced every 5 minutes. Not affiliated with oh-my-pi. <a href="https://github.com/paymog/omp-packages">Source on GitHub</a>.</div></footer>
+<footer class="site-foot"><div class="wrap">Package data from the npm registry, refreshed every few hours. Not affiliated with oh-my-pi. <a href="https://github.com/paymog/omp-packages">Source on GitHub</a>.</div></footer>
 <script>${SCRIPT}</script>
 </body></html>`;
 }

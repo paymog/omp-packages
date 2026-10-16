@@ -3,7 +3,7 @@ import { OMP_KEYWORDS, SCRIPT, SORTS, detailPage, esc, layout, listPage, listing
 
 const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
 const NPM_PAGE = 250;
-const PAGES_PER_RUN = 5; // ponytail: npm search returns 429 on bursts; full crawl takes ~1h at one run per 5 min
+const PAGES_PER_RUN = 5; // ponytail: npm search returns 429 on bursts; full crawl takes ~6h at one run per 30 min
 const LIST_PAGE = 50;
 
 interface NpmObject {
@@ -28,7 +28,7 @@ async function sync(db: D1Database): Promise<void> {
      ON CONFLICT (name) DO UPDATE SET version = ?2, description = ?3, keywords = ?4, author = ?5, repo_url = ?6,
        monthly_downloads = ?7, published_at = ?8, source = ?9, synced_at = ?10, status = ${statusCase("?9")}
      WHERE version IS NOT ?2 OR description IS NOT ?3 OR keywords IS NOT ?4 OR author IS NOT ?5 OR repo_url IS NOT ?6
-       OR monthly_downloads IS NOT ?7 OR published_at IS NOT ?8 OR source IS NOT ?9`,
+       OR published_at IS NOT ?8 OR source IS NOT ?9 OR abs(monthly_downloads - ?7) * 4 > monthly_downloads`,
   );
   let wrapped = false;
   const now = new Date().toISOString();
