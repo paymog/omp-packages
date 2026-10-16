@@ -21,6 +21,22 @@ export interface Report {
   created_at: string;
 }
 
+export interface Extra {
+  readme: string; // sanitized HTML
+  license: string | null;
+  homepage: string | null;
+  issues: string | null;
+  versions: number;
+  created: string | null;
+  maintainers: string[];
+  deps: string[];
+  peers: string[];
+  engines: Record<string, string>;
+  provides: [string, number][];
+  size: number | null;
+  files: number | null;
+}
+
 export interface ListView {
   q: string;
   status: Status | "all";
@@ -52,6 +68,7 @@ export const esc = (s: string) =>
 
 const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 const whole = new Intl.NumberFormat("en");
+const bytes = new Intl.NumberFormat("en", { notation: "compact", style: "unit", unit: "byte", unitDisplay: "narrow", maximumFractionDigits: 1 });
 
 function ago(iso: string | null): string {
   if (!iso) return "unknown";
@@ -84,6 +101,10 @@ const ICONS: Record<string, string> = {
   list: '<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',
   left: '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
   right: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+  issue: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/>',
+  scale:
+    '<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
 };
 
 const icon = (name: string, size = 16) =>
@@ -188,7 +209,7 @@ function verdict(p: Pkg): { title: string; body: string } {
   }
 }
 
-export function detailPage(p: Pkg, reports: Report[]): string {
+export function detailPage(p: Pkg, reports: Report[], x: Extra | null): string {
   const v = verdict(p);
   const total = p.works + p.broken;
   const keywords: string[] = JSON.parse(p.keywords);
@@ -205,6 +226,14 @@ export function detailPage(p: Pkg, reports: Report[]): string {
         )
         .join("")}</ul>`
     : `<p class="quiet">No reports yet.</p>`;
+  const npmHref = (n: string) => `https://www.npmjs.com/package/${esc(n)}`;
+  const depList = (title: string, names: string[]) =>
+    names.length
+      ? `<section class="box"><h2>${title} <span class="quiet num">${names.length}</span></h2><ul class="deps">${names
+          .map((n) => `<li><a href="${npmHref(n)}">${esc(n)}</a></li>`)
+          .join("")}</ul></section>`
+      : "";
+  const row = (k: string, v: string | null | undefined, cls = "") => (v ? `<dt>${k}</dt><dd${cls ? ` class="${cls}"` : ""}>${v}</dd>` : "");
 
   return `<div class="wrap">
   <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Packages</a><span aria-hidden="true">/</span><span>${esc(p.name)}</span></nav>
@@ -214,6 +243,7 @@ export function detailPage(p: Pkg, reports: Report[]): string {
     <div class="meta">
       ${p.author ? `<span>${icon("user", 14)}${esc(p.author)}</span>` : ""}
       <span>${icon("clock", 14)}Published ${ago(p.published_at)}</span>
+      ${x?.license ? `<span>${icon("scale", 14)}${esc(x.license)}</span>` : ""}
       <span class="num">${icon("download", 14)}${whole.format(p.monthly_downloads)} downloads/mo</span>
     </div>
   </header>
@@ -241,6 +271,7 @@ export function detailPage(p: Pkg, reports: Report[]): string {
       </form>
       <h3 class="reports-h">Reports <span class="quiet num">${reports.length}</span></h3>
       ${reportList}
+      ${x?.readme ? `<section class="readme" aria-labelledby="readme-h"><h2 id="readme-h">Readme</h2><div class="md">${x.readme}</div></section>` : ""}
     </section>
     <aside class="side">
       <section class="box install">
@@ -250,22 +281,34 @@ export function detailPage(p: Pkg, reports: Report[]): string {
       <section class="box">
         <h2>Links</h2>
         <ul class="links">
-          <li><a href="https://www.npmjs.com/package/${esc(p.name)}">${icon("package")}npm${icon("external", 13)}</a></li>
+          <li><a href="${npmHref(p.name)}">${icon("package")}npm${icon("external", 13)}</a></li>
           ${p.repo_url ? `<li><a href="${esc(p.repo_url)}">${icon("branch")}Repository${icon("external", 13)}</a></li>` : ""}
+          ${x?.homepage && !x.homepage.startsWith(p.repo_url ?? "\0") ? `<li><a href="${esc(x.homepage)}">${icon("globe")}Homepage${icon("external", 13)}</a></li>` : ""}
+          ${x?.issues ? `<li><a href="${esc(x.issues)}">${icon("issue")}Issues${icon("external", 13)}</a></li>` : ""}
         </ul>
       </section>
       <section class="box">
         <h2>Details</h2>
         <dl>
           <dt>Version</dt><dd class="mono">${esc(p.version)}</dd>
+          ${row("License", x?.license && esc(x.license))}
           <dt>Published</dt><dd>${p.published_at ? esc(p.published_at.slice(0, 10)) : "unknown"}</dd>
+          ${row("First published", x?.created && esc(x.created.slice(0, 10)))}
+          ${row("Versions", x && whole.format(x.versions), "num")}
           <dt>Downloads</dt><dd class="num">${whole.format(p.monthly_downloads)} / month</dd>
+          ${row("Unpacked size", x?.size ? bytes.format(x.size) : null, "num")}
+          ${row("Files", x?.files ? whole.format(x.files) : null, "num")}
+          ${row("Provides", x?.provides.map(([k, n]) => `${esc(k)} <span class="quiet num">${n}</span>`).join(", "))}
+          ${row("Engines", x && Object.entries(x.engines).map(([k, v]) => `${esc(k)} ${esc(String(v))}`).join(", "), "mono")}
+          ${row("Maintainers", x?.maintainers.map((n) => esc(String(n))).join(", "))}
         </dl>
         ${keywords.length ? `<ul class="tags">${keywords
           .slice(0, 12)
           .map((k) => `<li><a href="/?q=${encodeURIComponent(k)}">${esc(k)}</a></li>`)
           .join("")}</ul>` : ""}
       </section>
+      ${depList("Dependencies", x?.deps ?? [])}
+      ${depList("Peer dependencies", x?.peers ?? [])}
     </aside>
   </div>
 </div>`;
@@ -455,6 +498,25 @@ dt{color:var(--muted)}dd{margin:0;text-align:right}
 .tags{list-style:none;margin:1rem 0 0;padding:1rem 0 0;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:.4rem}
 .tags a{display:block;font-size:.8rem;padding:.2rem .55rem;border-radius:999px;background:var(--surface);color:var(--fg-2);text-decoration:none}
 .tags a:hover{color:var(--link)}
+.deps{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:.35rem .4rem;font:.78rem/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.deps a{display:block;padding:.15rem .45rem;border-radius:6px;background:var(--surface);color:var(--fg-2);text-decoration:none;overflow-wrap:anywhere}
+.deps a:hover{color:var(--link)}
+.readme{margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border);min-width:0}
+.readme>h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:1.25rem}
+.md{overflow-wrap:break-word;color:var(--fg-2)}
+.md>:first-child{margin-top:0}
+.md h1,.md h2,.md h3,.md h4{color:var(--fg);margin:1.75em 0 .6em}
+.md h1{font-size:1.6rem}.md h2{font-size:1.3rem;padding-bottom:.3em;border-bottom:1px solid var(--border)}.md h3{font-size:1.1rem}.md h4{font-size:1rem}
+.md p,.md ul,.md ol,.md blockquote,.md table,.md pre,.md details{margin:0 0 1em}
+.md img{max-width:100%;height:auto;vertical-align:middle}
+.md pre{background:var(--surface);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.85rem;line-height:1.5}
+.md :not(pre)>code{background:var(--surface);padding:.1em .35em;border-radius:4px}
+.md blockquote{border-left:3px solid var(--border);padding:0 1em;color:var(--muted)}
+.md table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse;font-size:.9rem}
+.md th,.md td{border:1px solid var(--border);padding:.4rem .7rem}
+.md th{background:var(--surface)}
+.md hr{border:0;border-top:1px solid var(--border);margin:1.5em 0}
+.md [align=center]{text-align:center}
 .prose{max-width:760px}
 .prose h1{font-size:2rem;letter-spacing:-.02em}
 .prose h2{font-size:1.2rem;margin:2.25rem 0 .6rem}
@@ -471,7 +533,7 @@ dt{color:var(--muted)}dd{margin:0;text-align:right}
 .facet-note{font-size:.8rem;margin-top:.75rem;padding:0}
 .facets h2{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .pkg-grid{grid-template-columns:minmax(0,1fr);gap:2rem}
-.side,.compat{display:contents}.summary{order:-2}.install{order:-1}.side>.box:not(.install){order:1}}
+.side,.compat{display:contents}.summary{order:-2}.install{order:-1}.side>.box:not(.install){order:1}.readme{order:2}}
 @media(max-width:640px){
 .band .wrap{flex-wrap:wrap;gap:.75rem 1rem;padding-top:.75rem;padding-bottom:.75rem}
 .search{order:3;flex-basis:100%;max-width:none}
@@ -484,7 +546,7 @@ main{padding-top:1.5rem}
 .choice label{max-width:none}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}`;
 
-const SCRIPT = `document.addEventListener("click",e=>{const b=e.target.closest("[data-copy]");if(!b)return;const l=b.querySelector("span"),t=l.textContent,live=document.getElementById("live"),done=(s,m)=>{b.dataset.state=s;l.textContent=m;live.textContent=m;setTimeout(()=>{delete b.dataset.state;l.textContent=t},1600)};navigator.clipboard.writeText(b.dataset.copy).then(()=>done("copied","Copied"),()=>done("failed","Copy failed"))})`;
+export const SCRIPT = `document.addEventListener("click",e=>{const b=e.target.closest("[data-copy]");if(!b)return;const l=b.querySelector("span"),t=l.textContent,live=document.getElementById("live"),done=(s,m)=>{b.dataset.state=s;l.textContent=m;live.textContent=m;setTimeout(()=>{delete b.dataset.state;l.textContent=t},1600)};navigator.clipboard.writeText(b.dataset.copy).then(()=>done("copied","Copied"),()=>done("failed","Copy failed"))})`;
 
 export function layout(title: string, body: string, opts: { q?: string; nav?: "listing" } = {}): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

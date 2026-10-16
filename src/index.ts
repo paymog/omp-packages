@@ -1,4 +1,5 @@
-import { OMP_KEYWORDS, SORTS, detailPage, esc, layout, listPage, listingPage, messagePage, type Pkg, type Report, type Status } from "./views";
+import { renderReadme } from "./readme";
+import { OMP_KEYWORDS, SCRIPT, SORTS, detailPage, esc, layout, listPage, listingPage, messagePage, type Extra, type Pkg, type Report, type Status } from "./views";
 
 const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
 const NPM_PAGE = 250;
@@ -123,13 +124,64 @@ async function list(db: D1Database, url: URL): Promise<Response> {
 }
 
 async function detail(db: D1Database, name: string): Promise<Response> {
-  const [pkg, reports] = await db.batch([
-    db.prepare("SELECT * FROM packages WHERE name = ?1").bind(name),
-    db.prepare("SELECT version, status, note, created_at FROM reports WHERE name = ?1 ORDER BY created_at DESC LIMIT 100").bind(name),
+  const [[pkg, reports], extra] = await Promise.all([
+    db.batch([
+      db.prepare("SELECT * FROM packages WHERE name = ?1").bind(name),
+      db.prepare("SELECT version, status, note, created_at FROM reports WHERE name = ?1 ORDER BY created_at DESC LIMIT 100").bind(name),
+    ]),
+    npmExtra(name),
   ]);
   const p = pkg.results[0] as Pkg | undefined;
   if (!p) return notFound(`No package named <code>${esc(name)}</code> is listed. It may not be on npm, or the sync has not reached it yet.`);
-  return html(`${p.name} · omp packages`, detailPage(p, reports.results as Report[]));
+  if (extra?.readme) extra.readme = await renderReadme(extra.readme, p.repo_url);
+  return html(`${p.name} · omp packages`, detailPage(p, reports.results as Report[], extra));
+}
+
+interface Manifest {
+  license?: string | { type?: string };
+  homepage?: string;
+  bugs?: string | { url?: string };
+  dependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  engines?: Record<string, string>;
+  omp?: Record<string, unknown>;
+  pi?: Record<string, unknown>;
+  dist?: { unpackedSize?: number; fileCount?: number };
+}
+
+interface NpmDoc {
+  readme?: string;
+  "dist-tags"?: { latest?: string };
+  versions?: Record<string, Manifest>;
+  time?: Record<string, string>;
+  maintainers?: { name: string }[];
+}
+
+// The full registry document is the only npm source with the README; a failed fetch renders the page without it.
+async function npmExtra(name: string): Promise<Extra | null> {
+  const res = await fetch(`https://registry.npmjs.org/${name.replace("/", "%2F")}`, { cf: { cacheTtl: 600, cacheEverything: true } }).catch(() => null);
+  if (!res?.ok) return null;
+  const doc = await res.json<NpmDoc>().catch(() => null);
+  const m = doc?.versions?.[doc["dist-tags"]?.latest ?? ""];
+  if (!doc || !m) return null;
+  const license = typeof m.license === "string" ? m.license : m.license?.type;
+  const bugs = typeof m.bugs === "string" ? m.bugs : m.bugs?.url;
+  const http = (u?: string) => (u && /^https?:\/\//.test(u) ? u : null);
+  return {
+    readme: doc.readme && doc.readme !== "ERROR: No README data found!" ? doc.readme : "",
+    license: license ?? null,
+    homepage: http(m.homepage),
+    issues: http(bugs),
+    versions: Object.keys(doc.versions ?? {}).length,
+    created: doc.time?.created ?? null,
+    maintainers: (doc.maintainers ?? []).map((x) => x.name),
+    deps: Object.keys(m.dependencies ?? {}),
+    peers: Object.keys(m.peerDependencies ?? {}),
+    engines: m.engines ?? {},
+    provides: Object.entries(m.omp ?? m.pi ?? {}).flatMap(([k, v]) => (Array.isArray(v) ? [[k, v.length] as [string, number]] : [])),
+    size: m.dist?.unpackedSize ?? null,
+    files: m.dist?.fileCount ?? null,
+  };
 }
 
 async function report(db: D1Database, req: Request, name: string): Promise<Response> {
@@ -162,14 +214,22 @@ async function report(db: D1Database, req: Request, name: string): Promise<Respo
   return Response.redirect(new URL(`/packages/${name}`, req.url).toString(), 303);
 }
 
+// README HTML is untrusted; the CSP backs up the sanitizer by allowing only the page's own copy script.
+let csp = "";
+async function initCsp(): Promise<void> {
+  const hash = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(SCRIPT)))));
+  csp = `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; img-src https: http: data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
+}
+
 function html(title: string, body: string, status = 200, opts: { q?: string; nav?: "listing" } = {}): Response {
-  return new Response(layout(title, body, opts), { status, headers: { "content-type": "text/html; charset=utf-8" } });
+  return new Response(layout(title, body, opts), { status, headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": csp } });
 }
 
 const notFound = (body: string) => html("Not found · omp packages", messagePage("Not found", body), 404);
 
 export default {
   async fetch(req, env): Promise<Response> {
+    if (!csp) await initCsp();
     const url = new URL(req.url);
     if (url.pathname === "/") return list(env.DB, url);
     if (url.pathname === "/get-listed") return html("Get listed · omp packages", listingPage(), 200, { nav: "listing" });
