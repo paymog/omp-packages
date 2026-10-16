@@ -1,4 +1,5 @@
-const KEYWORDS = ["omp-package", "omp-plugin", "pi-package"];
+const OMP_KEYWORDS = ["omp-package", "omp-plugin", "omp-extension", "oh-my-pi"];
+const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
 const NPM_PAGE = 250;
 const PAGES_PER_RUN = 5; // ponytail: npm search returns 429 on bursts; full crawl takes ~1h at one run per 5 min
 const LIST_PAGE = 50;
@@ -61,7 +62,7 @@ async function sync(db: D1Database): Promise<void> {
             repoUrl(p.links?.repository),
             downloads?.monthly ?? 0,
             p.date ?? null,
-            kws.some((k) => k === "omp-package" || k === "omp-plugin") ? "omp" : "pi",
+            kws.some((k) => OMP_KEYWORDS.includes(k)) ? "omp" : "pi",
             now,
           );
         }),
@@ -118,7 +119,7 @@ async function list(db: D1Database, url: URL): Promise<Response> {
 
   return html(
     "Packages",
-    `<p class="muted">${total ?? 0} packages indexed from npm. Packages tagged <code>omp-package</code> or <code>omp-plugin</code> are built for omp. Everything else is a pi package and is untested on omp until someone reports.</p>
+    `<p class="muted">${total ?? 0} packages indexed from npm. Packages tagged ${OMP_KEYWORDS.map((k) => `<code>${k}</code>`).join(", ")} are built for omp. Everything else is a pi package and is untested on omp until someone reports.</p>
     <form class="search"><input type="search" name="q" value="${esc(q)}" placeholder="Search packages" autofocus><input type="hidden" name="filter" value="${esc(filter)}"><button>Search</button></form>
     <nav class="tabs">${tabs}</nav>
     ${results.slice(0, LIST_PAGE).map(card).join("") || '<p class="muted">No packages found.</p>'}
