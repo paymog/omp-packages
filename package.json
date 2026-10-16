@@ -1,0 +1,14 @@
+{
+  "name": "omp-packages",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler d1 migrations apply omp-packages --remote && wrangler deploy",
+    "check": "wrangler types && tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "wrangler": "^4.0.0"
+  }
+}
