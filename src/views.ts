@@ -177,6 +177,7 @@ export function listPage(v: ListView): string {
 </div>`;
 
   return `<div class="wrap catalog">
+  <h1 class="sr">${v.q ? `Search results for “${esc(v.q)}”` : v.status === "all" ? "omp packages" : STATUS[v.status].label}</h1>
   <aside class="facets" aria-label="Filter by omp status">
     <h2>omp status</h2>
     <ul>
@@ -326,7 +327,7 @@ export function detailPage(p: Pkg, reports: Report[], x: Extra | null, listed: S
         </dl>
         ${keywords.length ? `<ul class="tags">${keywords
           .slice(0, 12)
-          .map((k) => `<li><a href="/?q=${encodeURIComponent(k)}">${esc(k)}</a></li>`)
+          .map((k) => `<li><a href="/?q=${encodeURIComponent(k)}" rel="nofollow">${esc(k)}</a></li>`)
           .join("")}</ul>` : ""}
       </section>
       ${depList("Dependencies", x?.deps ?? [])}
@@ -361,6 +362,69 @@ export function listingPage(): string {
   <h2>pi packages</h2>
   <p>Packages with only the <code>pi-package</code> keyword are listed as <strong>Untested on omp</strong> until users report a result. Packages that are only on GitHub are not listed.</p>
 </div>`;
+}
+
+export function aboutPage(): string {
+  return `<div class="wrap prose">
+  <h1>About omp packages</h1>
+  <p class="lede">omp packages is a catalog of plugins for <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (omp), a coding agent forked from Pi. It also tracks which Pi packages work on omp.</p>
+  <h2>Why it exists</h2>
+  <p>omp can install Pi packages, but many of them break on omp because the two agents have drifted apart. Before this site, the only way to find out was to install a package and try it. The catalog collects those results so the next person does not have to.</p>
+  <h2>Where the data comes from</h2>
+  <p>A scheduled job reads the npm registry every 30 minutes. It lists packages with the keywords ${[...OMP_KEYWORDS, "pi-package"].map((k) => `<code>${k}</code>`).join(", ")}. Package pages also fetch the README, license, and dependencies from npm when you open them. Packages that exist only on GitHub are not listed.</p>
+  <h2>How a status is decided</h2>
+  <p>If more people report a package as broken than as working, it shows as <strong>Broken on omp</strong>. Otherwise, a package with an omp keyword shows as <strong>Built for omp</strong>. A package with at least one working report shows as <strong>Works on omp</strong>. Everything else is <strong>Untested on omp</strong>. Anyone can send one report per package, and a new report replaces their old one.</p>
+  <h2>Contact</h2>
+  <p>This site is not affiliated with oh-my-pi or Stencil Labs. To report a wrong listing, ask for a package to be removed, or suggest a change, open an issue at <a href="https://github.com/paymog/omp-packages/issues">github.com/paymog/omp-packages</a>. The source code is in the same repository.</p>
+</div>`;
+}
+
+export function privacyPage(): string {
+  return `<div class="wrap prose">
+  <h1>Privacy</h1>
+  <p class="lede">omp packages sets no cookies, runs no analytics, and has no accounts.</p>
+  <h2>Reports</h2>
+  <p>When you report whether a package works, the site stores the result, the version you entered, your note, and the time. To allow one report per person per package, it also stores a SHA-256 hash of your IP address combined with the package name. The site never stores the IP address itself, and the hash cannot be matched to the same IP address on a different package.</p>
+  <h2>What is public</h2>
+  <p>Your report result, version, note, and report date appear on the package page. Do not put personal information in the note.</p>
+  <h2>Hosting</h2>
+  <p>The site runs on Cloudflare Workers. Cloudflare processes requests, including IP addresses, to deliver and protect the site, under its own privacy policy. Request logs are kept for a short time for debugging and are not shared.</p>
+  <h2>Removal</h2>
+  <p>To remove a report you sent, open an issue at <a href="https://github.com/paymog/omp-packages/issues">github.com/paymog/omp-packages</a> with the package name and the date of the report.</p>
+</div>`;
+}
+
+const mdLine = (s: string) => s.replace(/\s+/g, " ").trim();
+
+export function listMarkdown(title: string, description: string | undefined, v: ListView, url: URL): string {
+  const next = new URL(url);
+  next.searchParams.set("page", String(v.page + 1));
+  return [
+    `# ${title}`,
+    "",
+    description ?? "Plugins for oh-my-pi (omp), and whether pi packages work on omp. Request any package page with `Accept: text/markdown` for its details.",
+    "",
+    ...v.rows.map((p) => `- [${p.name}](${SITE}/packages/${p.name}) ${p.version}: ${STATUS[p.status].label}. ${mdLine(p.description)}`),
+    ...(v.hasNext ? ["", `Next page: ${next}`] : []),
+  ].join("\n");
+}
+
+export function detailMarkdown(p: Pkg, reports: Report[], readme: string): string {
+  const total = p.works + p.broken;
+  return [
+    `# ${p.name} ${p.version}`,
+    "",
+    ...(p.description ? [mdLine(p.description), ""] : []),
+    `- omp status: ${STATUS[p.status].label}${total ? ` (${p.works} works, ${p.broken} broken reports)` : ""}`,
+    `- Install: \`omp plugin install ${p.name}\``,
+    `- npm: https://www.npmjs.com/package/${p.name}`,
+    ...(p.repo_url ? [`- Repository: ${p.repo_url}`] : []),
+    "",
+    "## Reports",
+    "",
+    ...(reports.length ? reports.map((r) => `- ${r.status} on v${r.version || "?"}, ${r.created_at.slice(0, 10)}${r.note ? `: ${mdLine(r.note)}` : ""}`) : ["No reports yet."]),
+    ...(readme ? ["", "## Readme", "", readme] : []),
+  ].join("\n");
 }
 
 export function messagePage(title: string, body: string): string {
@@ -599,7 +663,7 @@ ${(h.jsonld ?? []).map((j) => `<script type="application/ld+json">${JSON.stringi
   <nav aria-label="Site"><a href="/get-listed"${h.nav === "listing" ? ' aria-current="page"' : ""}>Get listed</a><a href="https://github.com/can1357/oh-my-pi">oh-my-pi${icon("external", 13)}</a></nav>
 </div></header>
 <main>${body}</main>
-<footer class="site-foot"><div class="wrap">Package data from the npm registry, refreshed every few hours. Not affiliated with oh-my-pi. <a href="https://github.com/paymog/omp-packages">Source on GitHub</a>.</div></footer>
+<footer class="site-foot"><div class="wrap">Package data from the npm registry, refreshed every few hours. Not affiliated with oh-my-pi. <a href="/about">About</a> · <a href="/privacy">Privacy</a> · <a href="https://github.com/paymog/omp-packages">Source on GitHub</a>.</div></footer>
 <script>${SCRIPT}</script>
 </body></html>`;
 }

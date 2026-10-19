@@ -1,5 +1,6 @@
 User-agent: *
 Allow: /
-Disallow: /*/report
+Disallow: /*?q=
+Disallow: /*&q=
 
 Sitemap: https://omppackages.com/sitemap.xml

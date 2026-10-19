@@ -1,5 +1,5 @@
 import { renderReadme } from "./readme";
-import { OMP_KEYWORDS, SCRIPT, SITE, SORTS, STATUS, badge, detailPage, esc, layout, listPage, listingPage, messagePage, type Extra, type Head, type ListView, type Pkg, type Report, type Status } from "./views";
+import { OMP_KEYWORDS, SCRIPT, SITE, SORTS, STATUS, aboutPage, badge, detailMarkdown, detailPage, esc, layout, listMarkdown, listPage, listingPage, messagePage, privacyPage, type Extra, type Head, type ListView, type Pkg, type Report, type Status } from "./views";
 
 const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
 const NPM_PAGE = 250;
@@ -97,7 +97,7 @@ const REFRESH_COUNTS = `INSERT INTO meta (key, value) SELECT 'counts', json_grou
   WHERE true ON CONFLICT (key) DO UPDATE SET value = excluded.value`;
 const STATUSES: Status[] = ["native", "works", "broken", "untested"];
 
-async function list(db: D1Database, url: URL): Promise<Response> {
+async function list(db: D1Database, url: URL, md: boolean): Promise<Response> {
   const q = url.searchParams.get("q")?.trim().slice(0, 100) ?? "";
   const rawStatus = url.searchParams.get("status") ?? "";
   const status = STATUSES.find((s) => s === rawStatus) ?? "all";
@@ -136,7 +136,9 @@ async function list(db: D1Database, url: URL): Promise<Response> {
   }
   const title = q ? `“${q}”` : status === "all" ? "omp packages: plugins for oh-my-pi" : LIST_TITLE[status];
   const view: ListView = { q, status, sort, page, pageSize: LIST_PAGE, rows: results.slice(0, LIST_PAGE), hasNext: results.length > LIST_PAGE, counts: byStatus };
-  const res = html(`${title}${page > 1 ? ` · page ${page}` : ""}${status === "all" && !q ? "" : " · omp packages"}`, listPage(view), 200, head);
+  const res = md
+    ? markdown(listMarkdown(title, head.description, view, url))
+    : html(`${title}${page > 1 ? ` · page ${page}` : ""}${status === "all" && !q ? "" : " · omp packages"}`, listPage(view), 200, head);
   res.headers.set("cache-tag", "list");
   return res;
 }
@@ -148,7 +150,7 @@ const LIST_TITLE: Record<Status, string> = {
   untested: "pi packages not yet tested on omp",
 };
 
-async function detail(db: D1Database, name: string): Promise<Response> {
+async function detail(db: D1Database, name: string, md: boolean): Promise<Response> {
   const [[pkg, reports], extra] = await Promise.all([
     db.batch([
       db.prepare("SELECT * FROM packages WHERE name = ?1").bind(name),
@@ -159,6 +161,11 @@ async function detail(db: D1Database, name: string): Promise<Response> {
   const p = pkg.results[0] as Pkg | undefined;
   if (!p) return notFound(`No package named <code>${esc(name)}</code> is listed. It may not be on npm, or the sync has not reached it yet.`);
   const tag = `pkg:${p.name}`;
+  if (md) {
+    const res = markdown(detailMarkdown(p, reports.results as Report[], extra?.readme ?? ""));
+    res.headers.set("cache-tag", tag);
+    return res;
+  }
   if (extra?.readme) extra.readme = await renderReadme(extra.readme, p.repo_url);
   const deps = [...(extra?.deps ?? []), ...(extra?.peers ?? [])].slice(0, 100);
   const listed = deps.length
@@ -278,7 +285,7 @@ async function badgeSvg(db: D1Database, name: string): Promise<Response> {
 async function sitemap(db: D1Database): Promise<Response> {
   const { results } = await db.prepare("SELECT name, published_at FROM packages ORDER BY name").all<{ name: string; published_at: string | null }>();
   const loc = (path: string, lastmod?: string | null) => `<url><loc>${esc(SITE + path)}</loc>${lastmod ? `<lastmod>${lastmod.slice(0, 10)}</lastmod>` : ""}</url>`;
-  const urls = [...["/", "/get-listed", ...STATUSES.map((s) => `/?status=${s}`)].map((p) => loc(p)), ...results.map((r) => loc(`/packages/${r.name}`, r.published_at))];
+  const urls = [...["/", "/get-listed", "/about", "/privacy", ...STATUSES.map((s) => `/?status=${s}`)].map((p) => loc(p)), ...results.map((r) => loc(`/packages/${r.name}`, r.published_at))];
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.join("")}</urlset>`, {
     headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" },
   });
@@ -294,16 +301,23 @@ async function initCsp(): Promise<void> {
 function html(title: string, body: string, status = 200, head: Head = {}): Response {
   return new Response(layout(title, body, head), {
     status,
-    headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": csp },
+    headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": csp, vary: "accept", link: '</llms.txt>; rel="describedby"; type="text/markdown"' },
   });
+}
+
+function markdown(text: string): Response {
+  return new Response(text, { headers: { "content-type": "text/markdown; charset=utf-8", vary: "accept" } });
 }
 
 const notFound = (body: string) => html("Not found · omp packages", messagePage("Not found", body), 404);
 
 async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(req.url);
-  if (url.pathname === "/") return list(env.DB, url);
+  const md = req.headers.get("accept")?.includes("text/markdown") ?? false;
+  if (url.pathname === "/") return list(env.DB, url, md);
   if (url.pathname === "/get-listed") return html("Get listed · omp packages", listingPage(), 200, { nav: "listing", path: "/get-listed", description: "Publish an oh-my-pi (omp) plugin to npm with an omp keyword and it appears in the omp packages catalog." });
+  if (url.pathname === "/about") return html("About · omp packages", aboutPage(), 200, { path: "/about", description: "What omp packages is, where its data comes from, and how it decides whether a pi package works on oh-my-pi (omp)." });
+  if (url.pathname === "/privacy") return html("Privacy · omp packages", privacyPage(), 200, { path: "/privacy", description: "What omp packages stores about visitors and reporters: a one-way hash of the IP address and package name, and nothing else." });
   if (url.pathname === "/sitemap.xml") return sitemap(env.DB);
   let path: string;
   try {
@@ -317,7 +331,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (!m) return notFound("This page does not exist.");
   const name = m[1];
   if (m[2] && req.method === "POST") return report(env.DB, req, name, ctx);
-  if (!m[2] && req.method === "GET") return detail(env.DB, name);
+  if (!m[2] && req.method === "GET") return detail(env.DB, name, md);
   return new Response("Method not allowed", { status: 405 });
 }
 
@@ -334,6 +348,8 @@ export default {
       res.headers.set("retry-after", "3600");
     }
     if (!res.headers.has("cache-control")) res.headers.set("cache-control", req.method === "GET" && res.status === 200 ? "public, max-age=0, s-maxage=600" : "no-store");
+    res.headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
+    res.headers.set("x-content-type-options", "nosniff");
     return res;
   },
   async scheduled(_event, env): Promise<void> {

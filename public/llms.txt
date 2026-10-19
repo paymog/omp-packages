@@ -1,0 +1,30 @@
+# omp packages
+
+> A catalog of plugins for oh-my-pi (omp), and a record of which pi packages work on omp. Data comes from the npm registry and from user reports.
+
+Every package page answers one question: does this package work on omp? Each one has one of four statuses:
+
+- Built for omp: the author tagged the package with an omp keyword.
+- Works on omp: users reported that it works, and no more users reported it broken.
+- Broken on omp: more users reported it broken than working.
+- Untested on omp: a pi package with no reports yet.
+
+Send `Accept: text/markdown` to any page below to get Markdown instead of HTML.
+
+## Pages
+
+- [All packages](https://omppackages.com/): sorted by monthly downloads, 50 per page; add `?page=N`.
+- [Built for omp](https://omppackages.com/?status=native)
+- [Works on omp](https://omppackages.com/?status=works)
+- [Broken on omp](https://omppackages.com/?status=broken)
+- [Untested on omp](https://omppackages.com/?status=untested)
+- Package page: `https://omppackages.com/packages/<npm-name>`, with status, report notes, install command, and README.
+- Status badge: `https://omppackages.com/badge/<npm-name>.svg`
+- Search: `https://omppackages.com/?q=<text>` matches name and description.
+- [Get listed](https://omppackages.com/get-listed): how to publish a package so it appears here.
+- [About](https://omppackages.com/about): data sources and how a status is decided.
+- [Sitemap](https://omppackages.com/sitemap.xml): every package URL.
+
+## Install a package
+
+`omp plugin install <npm-name>`
