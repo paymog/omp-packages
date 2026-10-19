@@ -1,5 +1,5 @@
 import { renderReadme } from "./readme";
-import { OMP_KEYWORDS, SCRIPT, SITE, SORTS, STATUS, badge, detailPage, esc, layout, listPage, listingPage, messagePage, type Extra, type Head, type Pkg, type Report, type Status } from "./views";
+import { OMP_KEYWORDS, SCRIPT, SITE, SORTS, STATUS, badge, detailPage, esc, layout, listPage, listingPage, messagePage, type Extra, type Head, type ListView, type Pkg, type Report, type Status } from "./views";
 
 const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
 const NPM_PAGE = 250;
@@ -135,12 +135,10 @@ async function list(db: D1Database, url: URL): Promise<Response> {
     head.jsonld = [{ "@type": "WebSite", name: "omp packages", url: `${SITE}/`, potentialAction: { "@type": "SearchAction", target: `${SITE}/?q={search_term_string}`, "query-input": "required name=search_term_string" } }];
   }
   const title = q ? `“${q}”` : status === "all" ? "omp packages: plugins for oh-my-pi" : LIST_TITLE[status];
-  return html(
-    `${title}${page > 1 ? ` · page ${page}` : ""}${status === "all" && !q ? "" : " · omp packages"}`,
-    listPage({ q, status, sort, page, pageSize: LIST_PAGE, rows: results.slice(0, LIST_PAGE), hasNext: results.length > LIST_PAGE, counts: byStatus }),
-    200,
-    head,
-  );
+  const view: ListView = { q, status, sort, page, pageSize: LIST_PAGE, rows: results.slice(0, LIST_PAGE), hasNext: results.length > LIST_PAGE, counts: byStatus };
+  const res = html(`${title}${page > 1 ? ` · page ${page}` : ""}${status === "all" && !q ? "" : " · omp packages"}`, listPage(view), 200, head);
+  res.headers.set("cache-tag", "list");
+  return res;
 }
 
 const LIST_TITLE: Record<Status, string> = {
@@ -160,6 +158,7 @@ async function detail(db: D1Database, name: string): Promise<Response> {
   ]);
   const p = pkg.results[0] as Pkg | undefined;
   if (!p) return notFound(`No package named <code>${esc(name)}</code> is listed. It may not be on npm, or the sync has not reached it yet.`);
+  const tag = `pkg:${p.name}`;
   if (extra?.readme) extra.readme = await renderReadme(extra.readme, p.repo_url);
   const deps = [...(extra?.deps ?? []), ...(extra?.peers ?? [])].slice(0, 100);
   const listed = deps.length
@@ -187,7 +186,9 @@ async function detail(db: D1Database, name: string): Promise<Response> {
       ],
     },
   ];
-  return html(`${p.name}: ${STATUS[p.status].label} · omp packages`, detailPage(p, reports.results as Report[], extra, new Set(listed)), 200, { description, path, jsonld });
+  const res = html(`${p.name}: ${STATUS[p.status].label} · omp packages`, detailPage(p, reports.results as Report[], extra, new Set(listed)), 200, { description, path, jsonld });
+  res.headers.set("cache-tag", tag);
+  return res;
 }
 
 interface Manifest {
@@ -237,7 +238,7 @@ async function npmExtra(name: string): Promise<Extra | null> {
   };
 }
 
-async function report(db: D1Database, req: Request, name: string): Promise<Response> {
+async function report(db: D1Database, req: Request, name: string, ctx: ExecutionContext): Promise<Response> {
   const form = await req.formData();
   const status = form.get("status");
   if (status !== "works" && status !== "broken") {
@@ -264,12 +265,14 @@ async function report(db: D1Database, req: Request, name: string): Promise<Respo
     db.prepare(`UPDATE packages SET status = ${statusCase("source")} WHERE name = ?1`).bind(name),
     db.prepare(REFRESH_COUNTS),
   ]);
-  return Response.redirect(new URL(`/packages/${name}`, req.url).toString(), 303);
+  // Workers Caching serves pages without running the Worker; drop this package's pages and every list (counts changed).
+  await ctx.cache?.purge({ tags: [`pkg:${name}`, "list"] });
+  return new Response(null, { status: 303, headers: { location: `/packages/${name}` } });
 }
 
 async function badgeSvg(db: D1Database, name: string): Promise<Response> {
   const row = await db.prepare("SELECT status FROM packages WHERE name = ?1").bind(name).first<{ status: Status }>();
-  return new Response(badge(row?.status ?? null), { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=3600" } });
+  return new Response(badge(row?.status ?? null), { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=3600", "cache-tag": `pkg:${name}` } });
 }
 
 async function sitemap(db: D1Database): Promise<Response> {
@@ -289,26 +292,49 @@ async function initCsp(): Promise<void> {
 }
 
 function html(title: string, body: string, status = 200, head: Head = {}): Response {
-  return new Response(layout(title, body, head), { status, headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": csp } });
+  return new Response(layout(title, body, head), {
+    status,
+    headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": csp },
+  });
 }
 
 const notFound = (body: string) => html("Not found · omp packages", messagePage("Not found", body), 404);
 
+async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const url = new URL(req.url);
+  if (url.pathname === "/") return list(env.DB, url);
+  if (url.pathname === "/get-listed") return html("Get listed · omp packages", listingPage(), 200, { nav: "listing", path: "/get-listed", description: "Publish an oh-my-pi (omp) plugin to npm with an omp keyword and it appears in the omp packages catalog." });
+  if (url.pathname === "/sitemap.xml") return sitemap(env.DB);
+  let path: string;
+  try {
+    path = decodeURIComponent(url.pathname);
+  } catch {
+    return notFound("This page does not exist.");
+  }
+  const b = path.match(/^\/badge\/(.+)\.svg$/);
+  if (b && req.method === "GET") return badgeSvg(env.DB, b[1]);
+  const m = path.match(/^\/packages\/(.+?)(\/report)?$/);
+  if (!m) return notFound("This page does not exist.");
+  const name = m[1];
+  if (m[2] && req.method === "POST") return report(env.DB, req, name, ctx);
+  if (!m[2] && req.method === "GET") return detail(env.DB, name);
+  return new Response("Method not allowed", { status: 405 });
+}
+
 export default {
-  async fetch(req, env): Promise<Response> {
+  async fetch(req, env, ctx): Promise<Response> {
     if (!csp) await initCsp();
-    const url = new URL(req.url);
-    if (url.pathname === "/") return list(env.DB, url);
-    if (url.pathname === "/get-listed") return html("Get listed · omp packages", listingPage(), 200, { nav: "listing", path: "/get-listed", description: "Publish an oh-my-pi (omp) plugin to npm with an omp keyword and it appears in the omp packages catalog." });
-    if (url.pathname === "/sitemap.xml") return sitemap(env.DB);
-    const b = url.pathname.match(/^\/badge\/(.+)\.svg$/);
-    if (b && req.method === "GET") return badgeSvg(env.DB, decodeURIComponent(b[1]));
-    const m = url.pathname.match(/^\/packages\/(.+?)(\/report)?$/);
-    if (!m) return notFound("This page does not exist.");
-    const name = decodeURIComponent(m[1]);
-    if (m[2] && req.method === "POST") return report(env.DB, req, name);
-    if (!m[2] && req.method === "GET") return detail(env.DB, name);
-    return new Response("Method not allowed", { status: 405 });
+    let res: Response;
+    try {
+      res = await route(req, env, ctx);
+    } catch (e) {
+      // Most likely the D1 daily read limit; 503 + Retry-After tells crawlers to back off instead of dropping pages.
+      console.error(e);
+      res = html("Temporarily unavailable · omp packages", messagePage("Temporarily unavailable", "The catalog cannot read its database right now. Try again in an hour."), 503);
+      res.headers.set("retry-after", "3600");
+    }
+    if (!res.headers.has("cache-control")) res.headers.set("cache-control", req.method === "GET" && res.status === 200 ? "public, max-age=0, s-maxage=600" : "no-store");
+    return res;
   },
   async scheduled(_event, env): Promise<void> {
     await sync(env.DB);

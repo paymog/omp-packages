@@ -16,6 +16,8 @@ Many pi packages do not work on omp. This site lists them and lets users report 
 - Users can send one report (works or broken) per package. The Worker stores a hash of the IP address and package name. A new report replaces the old one.
 - `/badge/<name>.svg` renders the package's stored status as a README badge. Each package page shows the Markdown to copy. Unknown names get a "not listed" badge, not a 404, so a README never shows a broken image.
 - SEO: each page sets its own title, description, canonical URL, Open Graph tags, and JSON-LD. Search results (`?q=`) are `noindex`. `/sitemap.xml` lists every package from D1. `public/` holds `robots.txt`, the favicon, `og.png`, and the IndexNow key file; Workers static assets serve them before the Worker runs.
+- Workers Caching (`"cache"` in `wrangler.jsonc`) serves GET pages from the edge for 10 minutes (`s-maxage=600`) without running the Worker or reading D1. Responses carry `Cache-Tag` (`list`, `pkg:<name>`), and a new report purges its package and every list. Free-tier D1 allows 5 million row reads a day, and one uncached search reads the whole table twice, so crawlers can exhaust it without the cache.
+- If a request throws (usually the D1 daily limit), the Worker returns 503 with `Retry-After: 3600` so crawlers retry instead of dropping pages.
 - After each sync run, the Worker sends the URLs of changed packages to IndexNow (Bing, Yandex, and others). Google reads the sitemap through Search Console. The domain is verified in Google Search Console and Bing Webmaster Tools by DNS records on the Cloudflare zone; do not delete the `google-site-verification` TXT record or the Bing CNAME.
 - Design notes: `PRODUCT.md` and `DESIGN.md`.
 
