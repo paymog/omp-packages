@@ -1,6 +1,6 @@
 # omp packages
 
-A package catalog for [oh-my-pi](https://github.com/can1357/oh-my-pi) (omp). Live at https://omp-packages.paymahn.workers.dev.
+A package catalog for [oh-my-pi](https://github.com/can1357/oh-my-pi) (omp). Live at https://omppackages.com.
 
 Many pi packages do not work on omp. This site lists them and lets users report whether each one works.
 
