@@ -14,6 +14,7 @@ Many pi packages do not work on omp. This site lists them and lets users report 
 - A package page also fetches the npm registry document on each view. It shows the README, license, dependencies, and other details from it. `src/readme.ts` converts the README to HTML and keeps only allowlisted tags and attributes. A Content-Security-Policy header allows only the site's own script.
 - Only packages published to npm are listed. Git-only packages are not discovered.
 - Users can send one report (works or broken) per package. The Worker stores a hash of the IP address and package name. A new report replaces the old one.
+- `/badge/<name>.svg` renders the package's stored status as a README badge. Each package page shows the Markdown to copy. Unknown names get a "not listed" badge, not a 404, so a README never shows a broken image.
 - Design notes: `PRODUCT.md` and `DESIGN.md`.
 
 ## Develop

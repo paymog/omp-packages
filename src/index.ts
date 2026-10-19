@@ -1,5 +1,5 @@
 import { renderReadme } from "./readme";
-import { OMP_KEYWORDS, SCRIPT, SORTS, detailPage, esc, layout, listPage, listingPage, messagePage, type Extra, type Pkg, type Report, type Status } from "./views";
+import { OMP_KEYWORDS, SCRIPT, SORTS, badge, detailPage, esc, layout, listPage, listingPage, messagePage, type Extra, type Pkg, type Report, type Status } from "./views";
 
 const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
 const NPM_PAGE = 250;
@@ -214,6 +214,11 @@ async function report(db: D1Database, req: Request, name: string): Promise<Respo
   return Response.redirect(new URL(`/packages/${name}`, req.url).toString(), 303);
 }
 
+async function badgeSvg(db: D1Database, name: string): Promise<Response> {
+  const row = await db.prepare("SELECT status FROM packages WHERE name = ?1").bind(name).first<{ status: Status }>();
+  return new Response(badge(row?.status ?? null), { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=3600" } });
+}
+
 // README HTML is untrusted; the CSP backs up the sanitizer by allowing only the page's own copy script.
 let csp = "";
 async function initCsp(): Promise<void> {
@@ -233,6 +238,8 @@ export default {
     const url = new URL(req.url);
     if (url.pathname === "/") return list(env.DB, url);
     if (url.pathname === "/get-listed") return html("Get listed · omp packages", listingPage(), 200, { nav: "listing" });
+    const b = url.pathname.match(/^\/badge\/(.+)\.svg$/);
+    if (b && req.method === "GET") return badgeSvg(env.DB, decodeURIComponent(b[1]));
     const m = url.pathname.match(/^\/packages\/(.+?)(\/report)?$/);
     if (!m) return notFound("This page does not exist.");
     const name = decodeURIComponent(m[1]);

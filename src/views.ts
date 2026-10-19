@@ -57,6 +57,23 @@ const STATUS: Record<Status, { label: string; pill: string; icon: string }> = {
   untested: { label: "Untested on omp", pill: "untested", icon: "help" },
 };
 
+const SITE = "https://omppackages.com";
+
+const BADGE: Record<Status, [string, string]> = {
+  native: ["native", "#6d3fd6"],
+  works: ["works", "#2e8540"],
+  broken: ["broken", "#c4372c"],
+  untested: ["untested", "#6e6e80"],
+};
+
+export function badge(status: Status | null): string {
+  const [value, color] = status ? BADGE[status] : ["not listed", BADGE.untested[1]];
+  // ponytail: ~6.5px per Verdana 11px glyph; textLength pins text to that width, so no font metrics needed
+  const w = (s: string) => Math.round(s.length * 6.5) + 12;
+  const lw = w("omp"), vw = w(value), tw = lw + vw;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="20" role="img" aria-label="omp: ${value}"><title>omp: ${value}</title><clipPath id="r"><rect width="${tw}" height="20" rx="3"/></clipPath><g clip-path="url(#r)"><rect width="${lw}" height="20" fill="#555"/><rect x="${lw}" width="${vw}" height="20" fill="${color}"/></g><g fill="#fff" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11" text-anchor="middle"><text x="${lw / 2}" y="14" textLength="${lw - 12}">omp</text><text x="${lw + vw / 2}" y="14" textLength="${vw - 12}">${value}</text></g></svg>`;
+}
+
 export const SORTS: Record<string, { label: string; sql: string }> = {
   downloads: { label: "Downloads", sql: "monthly_downloads DESC" },
   recent: { label: "Recently published", sql: "published_at DESC" },
@@ -278,6 +295,11 @@ export function detailPage(p: Pkg, reports: Report[], x: Extra | null): string {
         <h2>Install</h2>
         <div class="cmd"><code><span class="prompt" aria-hidden="true">$ </span>omp plugin install ${esc(p.name)}</code>${copyButton(`omp plugin install ${p.name}`, "Copy")}</div>
       </section>
+      <section class="box badge">
+        <h2>Badge</h2>
+        <img src="/badge/${esc(p.name)}.svg" alt="omp: ${BADGE[p.status][0]}" height="20">
+        ${copyButton(`[![omp status](${SITE}/badge/${p.name}.svg)](${SITE}/packages/${p.name})`, "Copy Markdown")}
+      </section>
       <section class="box">
         <h2>Links</h2>
         <ul class="links">
@@ -334,6 +356,8 @@ export function listingPage(): string {
   <pre><code>npm publish --access public</code></pre>
   <h2>4. Wait for the sync</h2>
   <p>The catalog reads npm every 30 minutes, a few pages at a time. A full pass takes about 6 hours. Then users can install your package with <code>omp plugin install &lt;name&gt;</code>.</p>
+  <h2>5. Add a badge</h2>
+  <p>Each package page has a badge that shows the current omp status. Copy its Markdown into your README.</p>
   <h2>pi packages</h2>
   <p>Packages with only the <code>pi-package</code> keyword are listed as <strong>Untested on omp</strong> until users report a result. Packages that are only on GitHub are not listed.</p>
 </div>`;
@@ -490,6 +514,7 @@ main{flex:1;padding:2.25rem 0 4rem}
 .cmd code{flex:1;min-width:0;font-size:.82rem;line-height:1.5;padding:.3rem 0;overflow-wrap:anywhere}
 .cmd .prompt{color:var(--muted);user-select:none}
 .cmd .copy{padding:.35rem .55rem}
+.box.badge img{display:block;margin-bottom:.75rem}
 .links{list-style:none;margin:0;padding:0;display:grid;gap:.5rem}
 .links a{display:inline-flex;align-items:center;gap:.5rem;font-weight:500}
 .links a .i:last-child{color:var(--muted)}
