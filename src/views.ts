@@ -50,14 +50,14 @@ export interface ListView {
 
 export const OMP_KEYWORDS = ["omp-package", "omp-plugin", "omp-extension", "oh-my-pi"];
 
-const STATUS: Record<Status, { label: string; pill: string; icon: string }> = {
+export const STATUS: Record<Status, { label: string; pill: string; icon: string }> = {
   native: { label: "Built for omp", pill: "built for omp", icon: "badge" },
   works: { label: "Works on omp", pill: "works", icon: "check" },
   broken: { label: "Broken on omp", pill: "broken", icon: "x" },
   untested: { label: "Untested on omp", pill: "untested", icon: "help" },
 };
 
-const SITE = "https://omppackages.com";
+export const SITE = "https://omppackages.com";
 
 const BADGE: Record<Status, [string, string]> = {
   native: ["native", "#6d3fd6"],
@@ -226,7 +226,7 @@ function verdict(p: Pkg): { title: string; body: string } {
   }
 }
 
-export function detailPage(p: Pkg, reports: Report[], x: Extra | null): string {
+export function detailPage(p: Pkg, reports: Report[], x: Extra | null, listed: Set<string>): string {
   const v = verdict(p);
   const total = p.works + p.broken;
   const keywords: string[] = JSON.parse(p.keywords);
@@ -247,7 +247,7 @@ export function detailPage(p: Pkg, reports: Report[], x: Extra | null): string {
   const depList = (title: string, names: string[]) =>
     names.length
       ? `<section class="box"><h2>${title} <span class="quiet num">${names.length}</span></h2><ul class="deps">${names
-          .map((n) => `<li><a href="${npmHref(n)}">${esc(n)}</a></li>`)
+          .map((n) => `<li><a href="${listed.has(n) ? pkgHref(n) : npmHref(n)}">${esc(n)}</a></li>`)
           .join("")}</ul></section>`
       : "";
   const row = (k: string, v: string | null | undefined, cls = "") => (v ? `<dt>${k}</dt><dd${cls ? ` class="${cls}"` : ""}>${v}</dd>` : "");
@@ -573,14 +573,30 @@ main{padding-top:1.5rem}
 
 export const SCRIPT = `document.addEventListener("click",e=>{const b=e.target.closest("[data-copy]");if(!b)return;const l=b.querySelector("span"),t=l.textContent,live=document.getElementById("live"),done=(s,m)=>{b.dataset.state=s;l.textContent=m;live.textContent=m;setTimeout(()=>{delete b.dataset.state;l.textContent=t},1600)};navigator.clipboard.writeText(b.dataset.copy).then(()=>done("copied","Copied"),()=>done("failed","Copy failed"))})`;
 
-export function layout(title: string, body: string, opts: { q?: string; nav?: "listing" } = {}): string {
+export interface Head {
+  description?: string;
+  path?: string; // canonical path; omit for pages that should not be indexed
+  jsonld?: object[];
+  q?: string;
+  nav?: "listing";
+}
+
+export function layout(title: string, body: string, h: Head = {}): string {
+  const description = h.description ?? "Find oh-my-pi (omp) plugins and see whether pi packages work on omp.";
+  const url = h.path && SITE + h.path;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)}</title><meta name="description" content="Find oh-my-pi (omp) plugins and see whether pi packages work on omp."><style>${CSS}</style></head>
+<title>${esc(title)}</title><meta name="description" content="${esc(description)}">
+${url ? `<link rel="canonical" href="${esc(url)}"><meta property="og:url" content="${esc(url)}">` : '<meta name="robots" content="noindex,follow">'}
+<meta property="og:type" content="website"><meta property="og:site_name" content="omp packages"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}">
+<meta property="og:image" content="${SITE}/og.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+${(h.jsonld ?? []).map((j) => `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", ...j }).replace(/</g, "\\u003c")}</script>`).join("")}
+<style>${CSS}</style></head>
 <body><p id="live" class="sr" aria-live="polite"></p>
 <header class="band"><div class="wrap">
   <a class="brand" href="/">${icon("package", 22)}omp packages</a>
-  <form class="search" action="/" role="search">${icon("search", 18)}<input type="search" name="q" value="${esc(opts.q ?? "")}" placeholder="Search packages" aria-label="Search packages"><button>Search</button></form>
-  <nav aria-label="Site"><a href="/get-listed"${opts.nav === "listing" ? ' aria-current="page"' : ""}>Get listed</a><a href="https://github.com/can1357/oh-my-pi">oh-my-pi${icon("external", 13)}</a></nav>
+  <form class="search" action="/" role="search">${icon("search", 18)}<input type="search" name="q" value="${esc(h.q ?? "")}" placeholder="Search packages" aria-label="Search packages"><button>Search</button></form>
+  <nav aria-label="Site"><a href="/get-listed"${h.nav === "listing" ? ' aria-current="page"' : ""}>Get listed</a><a href="https://github.com/can1357/oh-my-pi">oh-my-pi${icon("external", 13)}</a></nav>
 </div></header>
 <main>${body}</main>
 <footer class="site-foot"><div class="wrap">Package data from the npm registry, refreshed every few hours. Not affiliated with oh-my-pi. <a href="https://github.com/paymog/omp-packages">Source on GitHub</a>.</div></footer>

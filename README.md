@@ -15,6 +15,8 @@ Many pi packages do not work on omp. This site lists them and lets users report 
 - Only packages published to npm are listed. Git-only packages are not discovered.
 - Users can send one report (works or broken) per package. The Worker stores a hash of the IP address and package name. A new report replaces the old one.
 - `/badge/<name>.svg` renders the package's stored status as a README badge. Each package page shows the Markdown to copy. Unknown names get a "not listed" badge, not a 404, so a README never shows a broken image.
+- SEO: each page sets its own title, description, canonical URL, Open Graph tags, and JSON-LD. Search results (`?q=`) are `noindex`. `/sitemap.xml` lists every package from D1. `public/` holds `robots.txt`, the favicon, `og.png`, and the IndexNow key file; Workers static assets serve them before the Worker runs.
+- After each sync run, the Worker sends the URLs of changed packages to IndexNow (Bing, Yandex, and others). Google reads the sitemap through Search Console. The domain is verified in Google Search Console and Bing Webmaster Tools by DNS records on the Cloudflare zone; do not delete the `google-site-verification` TXT record or the Bing CNAME.
 - Design notes: `PRODUCT.md` and `DESIGN.md`.
 
 ## Develop

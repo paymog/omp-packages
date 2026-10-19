@@ -4,6 +4,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
+  "assets": { "directory": "./public" },
   "routes": [{ "pattern": "omppackages.com", "custom_domain": true }],
   "triggers": { "crons": ["*/30 * * * *"] },
   "d1_databases": [

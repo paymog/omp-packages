@@ -1,10 +1,11 @@
 import { renderReadme } from "./readme";
-import { OMP_KEYWORDS, SCRIPT, SORTS, badge, detailPage, esc, layout, listPage, listingPage, messagePage, type Extra, type Pkg, type Report, type Status } from "./views";
+import { OMP_KEYWORDS, SCRIPT, SITE, SORTS, STATUS, badge, detailPage, esc, layout, listPage, listingPage, messagePage, type Extra, type Head, type Pkg, type Report, type Status } from "./views";
 
 const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
 const NPM_PAGE = 250;
 const PAGES_PER_RUN = 5; // ponytail: npm search returns 429 on bursts; full crawl takes ~6h at one run per 30 min
 const LIST_PAGE = 50;
+const INDEXNOW_KEY = "a3b4b96ec6b1788a83a65e91f983cbf1"; // public by design; public/<key>.txt proves ownership
 
 interface NpmObject {
   package: {
@@ -31,6 +32,7 @@ async function sync(db: D1Database): Promise<void> {
        OR published_at IS NOT ?8 OR source IS NOT ?9 OR abs(monthly_downloads - ?7) * 4 > monthly_downloads`,
   );
   let wrapped = false;
+  const changed: string[] = [];
   const now = new Date().toISOString();
   for (let i = 0; i < PAGES_PER_RUN; i++) {
     const kw = KEYWORDS[cur.k];
@@ -42,7 +44,7 @@ async function sync(db: D1Database): Promise<void> {
     const { objects, total } = (await res.json()) as { objects: NpmObject[]; total: number };
     const rows = objects.filter((o) => o.package.keywords?.includes(kw));
     if (rows.length) {
-      await db.batch(
+      const results = await db.batch(
         rows.map(({ package: p, downloads }) => {
           const kws = p.keywords ?? [];
           return upsert.bind(
@@ -59,6 +61,7 @@ async function sync(db: D1Database): Promise<void> {
           );
         }),
       );
+      results.forEach((r, j) => r.meta.changes && changed.push(rows[j].package.name));
     }
     cur.from += NPM_PAGE;
     if (!objects.length || cur.from >= total) {
@@ -70,6 +73,14 @@ async function sync(db: D1Database): Promise<void> {
     db.prepare("INSERT INTO meta (key, value) VALUES ('cursor', ?1) ON CONFLICT (key) DO UPDATE SET value = ?1").bind(JSON.stringify(cur)),
     ...(wrapped ? [db.prepare(REFRESH_COUNTS)] : []),
   ]);
+  if (changed.length) {
+    const res = await fetch("https://api.indexnow.org/indexnow", {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ host: new URL(SITE).host, key: INDEXNOW_KEY, urlList: changed.map((n) => `${SITE}/packages/${n}`) }),
+    });
+    if (!res.ok) console.warn(`IndexNow ${res.status} for ${changed.length} URLs`);
+  }
 }
 
 function repoUrl(raw?: string): string | null {
@@ -115,13 +126,29 @@ async function list(db: D1Database, url: URL): Promise<Response> {
   const byStatus = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<Status, number>;
   Object.assign(byStatus, JSON.parse((counts.results[0] as { value?: string } | undefined)?.value ?? "{}"));
   const results = rows.results as Pkg[];
+  const canonical = new URLSearchParams();
+  if (status !== "all") canonical.set("status", status);
+  if (page > 1) canonical.set("page", String(page));
+  const head: Head = { q, path: q ? undefined : `/${canonical.size ? `?${canonical}` : ""}` };
+  if (status !== "all") head.description = `${STATUS[status].label}: ${byStatus[status]} npm packages for oh-my-pi (omp), with user compatibility reports.`;
+  if (head.path === "/") {
+    head.jsonld = [{ "@type": "WebSite", name: "omp packages", url: `${SITE}/`, potentialAction: { "@type": "SearchAction", target: `${SITE}/?q={search_term_string}`, "query-input": "required name=search_term_string" } }];
+  }
+  const title = q ? `“${q}”` : status === "all" ? "omp packages: plugins for oh-my-pi" : LIST_TITLE[status];
   return html(
-    q ? `“${q}” · omp packages` : "omp packages: plugins for oh-my-pi",
+    `${title}${page > 1 ? ` · page ${page}` : ""}${status === "all" && !q ? "" : " · omp packages"}`,
     listPage({ q, status, sort, page, pageSize: LIST_PAGE, rows: results.slice(0, LIST_PAGE), hasNext: results.length > LIST_PAGE, counts: byStatus }),
     200,
-    { q },
+    head,
   );
 }
+
+const LIST_TITLE: Record<Status, string> = {
+  native: "Plugins built for oh-my-pi",
+  works: "pi packages that work on omp",
+  broken: "pi packages broken on omp",
+  untested: "pi packages not yet tested on omp",
+};
 
 async function detail(db: D1Database, name: string): Promise<Response> {
   const [[pkg, reports], extra] = await Promise.all([
@@ -134,7 +161,33 @@ async function detail(db: D1Database, name: string): Promise<Response> {
   const p = pkg.results[0] as Pkg | undefined;
   if (!p) return notFound(`No package named <code>${esc(name)}</code> is listed. It may not be on npm, or the sync has not reached it yet.`);
   if (extra?.readme) extra.readme = await renderReadme(extra.readme, p.repo_url);
-  return html(`${p.name} · omp packages`, detailPage(p, reports.results as Report[], extra));
+  const deps = [...(extra?.deps ?? []), ...(extra?.peers ?? [])].slice(0, 100);
+  const listed = deps.length
+    ? (await db.prepare(`SELECT name FROM packages WHERE name IN (${deps.map((_, i) => `?${i + 1}`).join(",")})`).bind(...deps).all<{ name: string }>()).results.map((r) => r.name)
+    : [];
+  const path = `/packages/${p.name}`;
+  const total = p.works + p.broken;
+  const description = `${STATUS[p.status].label}${total ? ` (${p.works} works, ${p.broken} broken reports)` : ""}. ${p.description}`.slice(0, 200);
+  const jsonld = [
+    {
+      "@type": "SoftwareSourceCode",
+      name: p.name,
+      description: p.description || undefined,
+      url: SITE + path,
+      version: p.version,
+      codeRepository: p.repo_url ?? undefined,
+      license: extra?.license ?? undefined,
+      author: p.author ? { "@type": "Person", name: p.author } : undefined,
+    },
+    {
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Packages", item: `${SITE}/` },
+        { "@type": "ListItem", position: 2, name: p.name, item: SITE + path },
+      ],
+    },
+  ];
+  return html(`${p.name}: ${STATUS[p.status].label} · omp packages`, detailPage(p, reports.results as Report[], extra, new Set(listed)), 200, { description, path, jsonld });
 }
 
 interface Manifest {
@@ -219,6 +272,15 @@ async function badgeSvg(db: D1Database, name: string): Promise<Response> {
   return new Response(badge(row?.status ?? null), { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=3600" } });
 }
 
+async function sitemap(db: D1Database): Promise<Response> {
+  const { results } = await db.prepare("SELECT name, published_at FROM packages ORDER BY name").all<{ name: string; published_at: string | null }>();
+  const loc = (path: string, lastmod?: string | null) => `<url><loc>${esc(SITE + path)}</loc>${lastmod ? `<lastmod>${lastmod.slice(0, 10)}</lastmod>` : ""}</url>`;
+  const urls = [...["/", "/get-listed", ...STATUSES.map((s) => `/?status=${s}`)].map((p) => loc(p)), ...results.map((r) => loc(`/packages/${r.name}`, r.published_at))];
+  return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.join("")}</urlset>`, {
+    headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" },
+  });
+}
+
 // README HTML is untrusted; the CSP backs up the sanitizer by allowing only the page's own copy script.
 let csp = "";
 async function initCsp(): Promise<void> {
@@ -226,8 +288,8 @@ async function initCsp(): Promise<void> {
   csp = `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; img-src https: http: data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
 }
 
-function html(title: string, body: string, status = 200, opts: { q?: string; nav?: "listing" } = {}): Response {
-  return new Response(layout(title, body, opts), { status, headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": csp } });
+function html(title: string, body: string, status = 200, head: Head = {}): Response {
+  return new Response(layout(title, body, head), { status, headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": csp } });
 }
 
 const notFound = (body: string) => html("Not found · omp packages", messagePage("Not found", body), 404);
@@ -237,7 +299,8 @@ export default {
     if (!csp) await initCsp();
     const url = new URL(req.url);
     if (url.pathname === "/") return list(env.DB, url);
-    if (url.pathname === "/get-listed") return html("Get listed · omp packages", listingPage(), 200, { nav: "listing" });
+    if (url.pathname === "/get-listed") return html("Get listed · omp packages", listingPage(), 200, { nav: "listing", path: "/get-listed", description: "Publish an oh-my-pi (omp) plugin to npm with an omp keyword and it appears in the omp packages catalog." });
+    if (url.pathname === "/sitemap.xml") return sitemap(env.DB);
     const b = url.pathname.match(/^\/badge\/(.+)\.svg$/);
     if (b && req.method === "GET") return badgeSvg(env.DB, decodeURIComponent(b[1]));
     const m = url.pathname.match(/^\/packages\/(.+?)(\/report)?$/);
