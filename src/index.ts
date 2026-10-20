@@ -132,7 +132,7 @@ async function list(db: D1Database, url: URL, md: boolean): Promise<Response> {
   const head: Head = { q, path: q ? undefined : `/${canonical.size ? `?${canonical}` : ""}` };
   if (status !== "all") head.description = `${STATUS[status].label}: ${byStatus[status]} npm packages for oh-my-pi (omp), with user compatibility reports.`;
   if (head.path === "/") {
-    head.jsonld = [{ "@type": "WebSite", name: "omp packages", url: `${SITE}/`, potentialAction: { "@type": "SearchAction", target: `${SITE}/?q={search_term_string}`, "query-input": "required name=search_term_string" } }];
+    head.jsonld = [{ "@type": "WebSite", "@id": `${SITE}/#website`, name: "omp packages", url: `${SITE}/`, potentialAction: { "@type": "SearchAction", target: `${SITE}/?q={search_term_string}`, "query-input": "required name=search_term_string" } }];
   }
   const title = q ? `“${q}”` : status === "all" ? "omp packages: plugins for oh-my-pi" : LIST_TITLE[status];
   const view: ListView = { q, status, sort, page, pageSize: LIST_PAGE, rows: results.slice(0, LIST_PAGE), hasNext: results.length > LIST_PAGE, counts: byStatus };
@@ -177,6 +177,8 @@ async function detail(db: D1Database, name: string, md: boolean): Promise<Respon
   const jsonld = [
     {
       "@type": "SoftwareSourceCode",
+      "@id": `${SITE + path}#package`,
+      isPartOf: { "@id": `${SITE}/#website` },
       name: p.name,
       description: p.description || undefined,
       url: SITE + path,
@@ -187,6 +189,7 @@ async function detail(db: D1Database, name: string, md: boolean): Promise<Respon
     },
     {
       "@type": "BreadcrumbList",
+      "@id": `${SITE + path}#breadcrumb`,
       itemListElement: [
         { "@type": "ListItem", position: 1, name: "Packages", item: `${SITE}/` },
         { "@type": "ListItem", position: 2, name: p.name, item: SITE + path },
@@ -350,6 +353,7 @@ export default {
     if (!res.headers.has("cache-control")) res.headers.set("cache-control", req.method === "GET" && res.status === 200 ? "public, max-age=0, s-maxage=600" : "no-store");
     res.headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
     res.headers.set("x-content-type-options", "nosniff");
+    res.headers.set("referrer-policy", "strict-origin-when-cross-origin");
     return res;
   },
   async scheduled(_event, env): Promise<void> {
