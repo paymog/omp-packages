@@ -3,5 +3,6 @@ Allow: /
 Disallow: /*?q=
 Disallow: /*&q=
 Content-Usage: train-ai=y
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 
 Sitemap: https://omppackages.com/sitemap.xml
