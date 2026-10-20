@@ -19,6 +19,7 @@ export interface Report {
   status: "works" | "broken";
   note: string;
   created_at: string;
+  ours: number;
 }
 
 export interface Extra {
@@ -240,7 +241,7 @@ export function detailPage(p: Pkg, reports: Report[], x: Extra | null, listed: S
   const reportList = reports.length
     ? `<ul class="reports">${reports
         .map(
-          (r) => `<li>${pill(r.status)}<span class="r-meta num">v${esc(r.version || "?")} · ${ago(r.created_at)}</span>${r.note ? `<p>${esc(r.note)}</p>` : ""}</li>`,
+          (r) => `<li>${pill(r.status)}${r.ours ? `<a class="ours" href="/about#testing">Tested by omp packages</a>` : ""}<span class="r-meta num">v${esc(r.version || "?")} · ${ago(r.created_at)}</span>${r.note ? `<p>${esc(r.note)}</p>` : ""}</li>`,
         )
         .join("")}</ul>`
     : `<p class="quiet">No reports yet.</p>`;
@@ -374,6 +375,8 @@ export function aboutPage(): string {
   <p>A scheduled job reads the npm registry every 30 minutes. It lists packages with the keywords ${[...OMP_KEYWORDS, "pi-package"].map((k) => `<code>${k}</code>`).join(", ")}. Package pages also fetch the README, license, and dependencies from npm when you open them. Packages that exist only on GitHub are not listed.</p>
   <h2>How a status is decided</h2>
   <p>If more people report a package as broken than as working, it shows as <strong>Broken on omp</strong>. Otherwise, a package with an omp keyword shows as <strong>Built for omp</strong>. A package with at least one working report shows as <strong>Works on omp</strong>. Everything else is <strong>Untested on omp</strong>. Anyone can send one report per package, and a new report replaces their old one.</p>
+  <h2 id="testing">Tested by omp packages</h2>
+  <p>We test the most-downloaded Pi packages ourselves. Each package is installed with <code>omp plugin install</code> in a clean container, then omp starts with the package loaded. A package passes when it installs, loads without errors, and adds commands, tools, or skills. The test does not call those tools, so a pass means the package loads on omp, not that every feature works. Our result counts as one report, and the note shows the omp version and any error.</p>
   <h2>Contact</h2>
   <p>This site is not affiliated with oh-my-pi or Stencil Labs. To report a wrong listing, ask for a package to be removed, or suggest a change, open an issue at <a href="https://github.com/paymog/omp-packages/issues">github.com/paymog/omp-packages</a>. The source code is in the same repository.</p>
 </div>`;
@@ -422,7 +425,7 @@ export function detailMarkdown(p: Pkg, reports: Report[], readme: string): strin
     "",
     "## Reports",
     "",
-    ...(reports.length ? reports.map((r) => `- ${r.status} on v${r.version || "?"}, ${r.created_at.slice(0, 10)}${r.note ? `: ${mdLine(r.note)}` : ""}`) : ["No reports yet."]),
+    ...(reports.length ? reports.map((r) => `- ${r.status} on v${r.version || "?"}, ${r.created_at.slice(0, 10)}${r.ours ? " (tested by omp packages)" : ""}${r.note ? `: ${mdLine(r.note)}` : ""}`) : ["No reports yet."]),
     ...(readme ? ["", "## Readme", "", readme] : []),
   ].join("\n");
 }
@@ -571,6 +574,8 @@ main{flex:1;padding:2.25rem 0 4rem}
 .reports li{padding:.9rem 0;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .75rem}
 .reports p{flex-basis:100%;margin:0;color:var(--fg-2);max-width:70ch;overflow-wrap:anywhere;white-space:pre-line}
 .r-meta{font-size:.85rem;color:var(--muted)}
+.ours{font-size:.75rem;font-weight:600;padding:.25rem .55rem;border:1px solid var(--border);border-radius:999px;color:var(--fg-2);text-decoration:none}
+.ours:hover{border-color:var(--fg-2)}
 .side{display:grid;grid-template-columns:minmax(0,1fr);gap:1rem;min-width:0}
 .box{border:1px solid var(--border);border-radius:12px;padding:1.1rem 1.2rem;background:var(--bg)}
 .box h2{font-size:.95rem;margin-bottom:.75rem}

@@ -96,6 +96,8 @@ const statusCase = (source: string) =>
 const REFRESH_COUNTS = `INSERT INTO meta (key, value) SELECT 'counts', json_group_object(status, n) FROM (SELECT status, COUNT(*) AS n FROM packages GROUP BY status)
   WHERE true ON CONFLICT (key) DO UPDATE SET value = excluded.value`;
 const STATUSES: Status[] = ["native", "works", "broken", "untested"];
+// Reporter id on reports written by our own install tests; real ip_hash values are hex digests, so it cannot collide.
+const OUR_TESTS = "omppackages-load-test";
 
 async function list(db: D1Database, url: URL, md: boolean): Promise<Response> {
   const q = url.searchParams.get("q")?.trim().slice(0, 100) ?? "";
@@ -154,7 +156,7 @@ async function detail(db: D1Database, name: string, md: boolean): Promise<Respon
   const [[pkg, reports], extra] = await Promise.all([
     db.batch([
       db.prepare("SELECT * FROM packages WHERE name = ?1").bind(name),
-      db.prepare("SELECT version, status, note, created_at FROM reports WHERE name = ?1 ORDER BY created_at DESC LIMIT 100").bind(name),
+      db.prepare("SELECT version, status, note, created_at, ip_hash = ?2 AS ours FROM reports WHERE name = ?1 ORDER BY ours DESC, created_at DESC LIMIT 100").bind(name, OUR_TESTS),
     ]),
     npmExtra(name),
   ]);
