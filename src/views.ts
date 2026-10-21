@@ -47,6 +47,7 @@ export interface ListView {
   rows: Pkg[];
   hasNext: boolean;
   counts: Record<Status, number>;
+  capped: boolean;
 }
 
 export const OMP_KEYWORDS = ["omp-package", "omp-plugin", "omp-extension", "oh-my-pi"];
@@ -150,10 +151,11 @@ export function listPage(v: ListView): string {
   };
   const total = Object.values(v.counts).reduce((a, b) => a + b, 0);
   const shown = v.status === "all" ? total : v.counts[v.status];
+  const count = (n: number) => `${whole.format(n)}${v.capped ? "+" : ""}`;
   const facet = (key: Status | "all", label: string, n: number, ico: string) =>
-    `<li><a href="${link({ status: key, page: 1 })}"${v.status === key ? ' aria-current="page"' : ""} class="${key === "all" ? "" : `s-${key}`}">${icon(ico)}<span>${label}</span><span class="n num">${whole.format(n)}</span></a></li>`;
+    `<li><a href="${link({ status: key, page: 1 })}"${v.status === key ? ' aria-current="page"' : ""} class="${key === "all" ? "" : `s-${key}`}">${icon(ico)}<span>${label}</span><span class="n num">${count(n)}</span></a></li>`;
   const first = (v.page - 1) * v.pageSize + 1;
-  const range = v.rows.length ? `${whole.format(first)}–${whole.format(first + v.rows.length - 1)} of ${whole.format(shown)}` : "No";
+  const range = v.rows.length ? `${whole.format(first)}–${whole.format(first + v.rows.length - 1)} of ${count(shown)}` : "No";
 
   const rows = v.rows
     .map(

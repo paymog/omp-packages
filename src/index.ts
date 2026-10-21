@@ -98,6 +98,7 @@ const REFRESH_COUNTS = `INSERT INTO meta (key, value) SELECT 'counts', json_grou
 const STATUSES: Status[] = ["native", "works", "broken", "untested"];
 // Reporter id on reports written by our own install tests; real ip_hash values are hex digests, so it cannot collide.
 const OUR_TESTS = "omppackages-load-test";
+const SEARCH_CAP = 1000;
 
 async function list(db: D1Database, url: URL, md: boolean): Promise<Response> {
   const q = url.searchParams.get("q")?.trim().slice(0, 100) ?? "";
@@ -107,11 +108,12 @@ async function list(db: D1Database, url: URL, md: boolean): Promise<Response> {
   const sort = Object.hasOwn(SORTS, rawSort) ? rawSort : "downloads";
   const page = Math.floor(Math.min(1000, Math.max(1, Number(url.searchParams.get("page")) || 1)));
   // Trigram FTS matches substrings like LIKE '%q%' but reads only matching rows; it needs at least 3 characters.
+  // Sorting and counting read every match, so cap matches to bound the rows a broad search reads.
   const searchable = [...q].length >= 3;
-  const from = q ? "packages_fts f JOIN packages p ON p.rowid = f.rowid" : "packages p";
   const match = searchable ? "packages_fts MATCH ?1" : "0";
+  const from = q ? `(SELECT rowid FROM packages_fts WHERE ${match} LIMIT ${SEARCH_CAP}) f JOIN packages p ON p.rowid = f.rowid` : "packages p";
   const phrase = `"${q.replaceAll('"', '""')}"`;
-  const where = q ? [match] : [];
+  const where: string[] = [];
   const params: string[] = q && searchable ? [phrase] : [];
   if (status !== "all") {
     where.push(`p.status = ?${params.length + 1}`);
@@ -125,7 +127,7 @@ async function list(db: D1Database, url: URL, md: boolean): Promise<Response> {
       )
       .bind(...params),
     q
-      ? db.prepare(`SELECT json_group_object(status, n) AS value FROM (SELECT p.status, COUNT(*) AS n FROM ${from} WHERE ${match} GROUP BY p.status)`).bind(...(searchable ? [phrase] : []))
+      ? db.prepare(`SELECT json_group_object(status, n) AS value FROM (SELECT p.status, COUNT(*) AS n FROM ${from} GROUP BY p.status)`).bind(...(searchable ? [phrase] : []))
       : db.prepare("SELECT value FROM meta WHERE key = 'counts'"),
   ]);
   const byStatus = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<Status, number>;
@@ -140,7 +142,8 @@ async function list(db: D1Database, url: URL, md: boolean): Promise<Response> {
     head.jsonld = [{ "@type": "WebSite", "@id": `${SITE}/#website`, name: "omp packages", url: `${SITE}/`, potentialAction: { "@type": "SearchAction", target: `${SITE}/search?q={search_term_string}`, "query-input": "required name=search_term_string" } }];
   }
   const title = q ? `“${q}”` : status === "all" ? "omp packages: plugins for oh-my-pi" : LIST_TITLE[status];
-  const view: ListView = { q, status, sort, page, pageSize: LIST_PAGE, rows: results.slice(0, LIST_PAGE), hasNext: results.length > LIST_PAGE, counts: byStatus };
+  const capped = q !== "" && Object.values(byStatus).reduce((a, b) => a + b, 0) >= SEARCH_CAP;
+  const view: ListView = { q, status, sort, page, pageSize: LIST_PAGE, rows: results.slice(0, LIST_PAGE), hasNext: results.length > LIST_PAGE, counts: byStatus, capped };
   const res = md
     ? markdown(listMarkdown(title, head.description, view, url))
     : html(`${title}${page > 1 ? ` · page ${page}` : ""}${status === "all" && !q ? "" : " · omp packages"}`, listPage(view), 200, head);
