@@ -146,7 +146,7 @@ export function listPage(v: ListView): string {
     if (sort !== "downloads") p.set("sort", sort);
     if (page > 1) p.set("page", String(page));
     const qs = p.toString();
-    return esc(qs ? `/?${qs}` : "/");
+    return esc(qs ? `${v.q ? "/search" : "/"}?${qs}` : "/");
   };
   const total = Object.values(v.counts).reduce((a, b) => a + b, 0);
   const shown = v.status === "all" ? total : v.counts[v.status];
@@ -328,7 +328,7 @@ export function detailPage(p: Pkg, reports: Report[], x: Extra | null, listed: S
         </dl>
         ${keywords.length ? `<ul class="tags">${keywords
           .slice(0, 12)
-          .map((k) => `<li><a href="/?q=${encodeURIComponent(k)}" rel="nofollow">${esc(k)}</a></li>`)
+          .map((k) => `<li><a href="/search?q=${encodeURIComponent(k)}" rel="nofollow">${esc(k)}</a></li>`)
           .join("")}</ul>` : ""}
       </section>
       ${depList("Dependencies", x?.deps ?? [])}
@@ -664,7 +664,7 @@ ${(h.jsonld ?? []).map((j) => `<script type="application/ld+json">${JSON.stringi
 <body><p id="live" class="sr" aria-live="polite"></p>
 <header class="band"><div class="wrap">
   <a class="brand" href="/">${icon("package", 22)}omp packages</a>
-  <form class="search" action="/" role="search">${icon("search", 18)}<input type="search" name="q" value="${esc(h.q ?? "")}" placeholder="Search packages" aria-label="Search packages"><button>Search</button></form>
+  <form class="search" action="/search" role="search">${icon("search", 18)}<input type="search" name="q" value="${esc(h.q ?? "")}" placeholder="Search packages" aria-label="Search packages"><button>Search</button></form>
   <nav aria-label="Site"><a href="/get-listed"${h.nav === "listing" ? ' aria-current="page"' : ""}>Get listed</a><a href="https://github.com/can1357/oh-my-pi">oh-my-pi${icon("external", 13)}</a></nav>
 </div></header>
 <main>${body}</main>

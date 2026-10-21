@@ -137,7 +137,7 @@ async function list(db: D1Database, url: URL, md: boolean): Promise<Response> {
   const head: Head = { q, path: q ? undefined : `/${canonical.size ? `?${canonical}` : ""}` };
   if (status !== "all") head.description = `${STATUS[status].label}: ${byStatus[status]} npm packages for oh-my-pi (omp), with user compatibility reports.`;
   if (head.path === "/") {
-    head.jsonld = [{ "@type": "WebSite", "@id": `${SITE}/#website`, name: "omp packages", url: `${SITE}/`, potentialAction: { "@type": "SearchAction", target: `${SITE}/?q={search_term_string}`, "query-input": "required name=search_term_string" } }];
+    head.jsonld = [{ "@type": "WebSite", "@id": `${SITE}/#website`, name: "omp packages", url: `${SITE}/`, potentialAction: { "@type": "SearchAction", target: `${SITE}/search?q={search_term_string}`, "query-input": "required name=search_term_string" } }];
   }
   const title = q ? `“${q}”` : status === "all" ? "omp packages: plugins for oh-my-pi" : LIST_TITLE[status];
   const view: ListView = { q, status, sort, page, pageSize: LIST_PAGE, rows: results.slice(0, LIST_PAGE), hasNext: results.length > LIST_PAGE, counts: byStatus };
@@ -322,7 +322,9 @@ const notFound = (body: string) => html("Not found · omp packages", messagePage
 async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(req.url);
   const md = req.headers.get("accept")?.includes("text/markdown") ?? false;
-  if (url.pathname === "/") return list(env.DB, url, md);
+  // Search has its own path because the free rate-limit rule can match only on path.
+  if (url.pathname === "/" && url.searchParams.has("q")) return new Response(null, { status: 301, headers: { location: `/search${url.search}` } });
+  if (url.pathname === "/" || url.pathname === "/search") return list(env.DB, url, md);
   if (url.pathname === "/get-listed") return html("Get listed · omp packages", listingPage(), 200, { nav: "listing", path: "/get-listed", description: "Publish an oh-my-pi (omp) plugin to npm with an omp keyword and it appears in the omp packages catalog." });
   if (url.pathname === "/about") return html("About · omp packages", aboutPage(), 200, { path: "/about", description: "What omp packages is, where its data comes from, and how it decides whether a pi package works on oh-my-pi (omp)." });
   if (url.pathname === "/privacy") return html("Privacy · omp packages", privacyPage(), 200, { path: "/privacy", description: "What omp packages stores about visitors and reporters: a one-way hash of the IP address and package name, and nothing else." });

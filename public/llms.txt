@@ -20,7 +20,7 @@ Send `Accept: text/markdown` to any page below to get Markdown instead of HTML.
 - [Untested on omp](https://omppackages.com/?status=untested)
 - Package page: `https://omppackages.com/packages/<npm-name>`, with status, report notes, install command, and README.
 - Status badge: `https://omppackages.com/badge/<npm-name>.svg`
-- Search: `https://omppackages.com/?q=<text>` matches name and description.
+- Search: `https://omppackages.com/search?q=<text>` matches name and description (at least 3 characters).
 - [Get listed](https://omppackages.com/get-listed): how to publish a package so it appears here.
 - [About](https://omppackages.com/about): data sources and how a status is decided.
 - [Sitemap](https://omppackages.com/sitemap.xml): every package URL.
