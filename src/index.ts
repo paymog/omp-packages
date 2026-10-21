@@ -106,23 +106,26 @@ async function list(db: D1Database, url: URL, md: boolean): Promise<Response> {
   const rawSort = url.searchParams.get("sort") ?? "";
   const sort = Object.hasOwn(SORTS, rawSort) ? rawSort : "downloads";
   const page = Math.floor(Math.min(1000, Math.max(1, Number(url.searchParams.get("page")) || 1)));
-  const match = "(name LIKE ?1 OR description LIKE ?1)";
-  const pattern = `%${q}%`;
+  // Trigram FTS matches substrings like LIKE '%q%' but reads only matching rows; it needs at least 3 characters.
+  const searchable = [...q].length >= 3;
+  const from = q ? "packages_fts f JOIN packages p ON p.rowid = f.rowid" : "packages p";
+  const match = searchable ? "packages_fts MATCH ?1" : "0";
+  const phrase = `"${q.replaceAll('"', '""')}"`;
   const where = q ? [match] : [];
-  const params: string[] = q ? [pattern] : [];
+  const params: string[] = q && searchable ? [phrase] : [];
   if (status !== "all") {
-    where.push(`status = ?${params.length + 1}`);
+    where.push(`p.status = ?${params.length + 1}`);
     params.push(status);
   }
   const [rows, counts] = await db.batch([
     db
       .prepare(
-        `SELECT * FROM packages ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+        `SELECT p.* FROM ${from} ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
          ORDER BY ${SORTS[sort].sql} LIMIT ${LIST_PAGE + 1} OFFSET ${(page - 1) * LIST_PAGE}`,
       )
       .bind(...params),
     q
-      ? db.prepare(`SELECT json_group_object(status, n) AS value FROM (SELECT status, COUNT(*) AS n FROM packages WHERE ${match} GROUP BY status)`).bind(pattern)
+      ? db.prepare(`SELECT json_group_object(status, n) AS value FROM (SELECT p.status, COUNT(*) AS n FROM ${from} WHERE ${match} GROUP BY p.status)`).bind(...(searchable ? [phrase] : []))
       : db.prepare("SELECT value FROM meta WHERE key = 'counts'"),
   ]);
   const byStatus = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<Status, number>;

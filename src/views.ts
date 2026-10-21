@@ -76,9 +76,9 @@ export function badge(status: Status | null): string {
 }
 
 export const SORTS: Record<string, { label: string; sql: string }> = {
-  downloads: { label: "Downloads", sql: "monthly_downloads DESC" },
-  recent: { label: "Recently published", sql: "published_at DESC" },
-  name: { label: "Name", sql: "name" },
+  downloads: { label: "Downloads", sql: "p.monthly_downloads DESC" },
+  recent: { label: "Recently published", sql: "p.published_at DESC" },
+  name: { label: "Name", sql: "p.name" },
 };
 
 export const esc = (s: string) =>
@@ -174,7 +174,7 @@ export function listPage(v: ListView): string {
 
   const empty = `<div class="empty">
   <h2>No packages match${v.q ? ` “${esc(v.q)}”` : ""}</h2>
-  <p>Try a shorter search, or <a href="${link({ status: "all", page: 1 })}">show every status</a>. Packages appear here after they are published to npm with an omp or pi keyword.</p>
+  <p>${v.q && [...v.q].length < 3 ? "Search needs at least 3 characters." : `Try a shorter search, or <a href="${link({ status: "all", page: 1 })}">show every status</a>. Packages appear here after they are published to npm with an omp or pi keyword.`}</p>
 </div>`;
 
   return `<div class="wrap catalog">
