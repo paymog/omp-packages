@@ -601,8 +601,8 @@ dt{color:var(--muted)}dd{margin:0;text-align:right}
 .readme>h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:1.25rem}
 .md{overflow-wrap:break-word;color:var(--fg-2)}
 .md>:first-child{margin-top:0}
-.md h1,.md h2,.md h3,.md h4{color:var(--fg);margin:1.75em 0 .6em}
-.md h1{font-size:1.6rem}.md h2{font-size:1.3rem;padding-bottom:.3em;border-bottom:1px solid var(--border)}.md h3{font-size:1.1rem}.md h4{font-size:1rem}
+.md h2,.md h3,.md h4,.md h5{color:var(--fg);margin:1.75em 0 .6em}
+.md h2{font-size:1.6rem}.md h3{font-size:1.3rem;padding-bottom:.3em;border-bottom:1px solid var(--border)}.md h4{font-size:1.1rem}.md h5{font-size:1rem}
 .md p,.md ul,.md ol,.md blockquote,.md table,.md pre,.md details{margin:0 0 1em}
 .md img{max-width:100%;height:auto;vertical-align:middle}
 .md pre{background:var(--surface);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.85rem;line-height:1.5}
@@ -653,7 +653,7 @@ export interface Head {
 }
 
 export function layout(title: string, body: string, h: Head = {}): string {
-  const description = h.description ?? "Find oh-my-pi (omp) plugins and see whether pi packages work on omp.";
+  const description = h.description ?? "Find plugins for oh-my-pi (omp) and see whether pi packages work on omp, with install tests, user reports, and README badges.";
   const url = h.path && SITE + h.path;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title><meta name="description" content="${esc(description)}">

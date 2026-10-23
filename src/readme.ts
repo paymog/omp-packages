@@ -57,6 +57,8 @@ export async function renderReadme(md: string, repo: string | null): Promise<str
           return;
         }
         for (const [name] of [...e.attributes]) if (!keep.includes(name)) e.removeAttribute(name);
+        // The package page owns the only h1.
+        if (/^h[1-5]$/.test(tag)) e.tagName = `h${Number(tag[1]) + 1}`;
         if (tag === "a") {
           const href = safeUrl(e.getAttribute("href") ?? "", base.link, ["https:", "http:", "mailto:"]);
           if (href) e.setAttribute("href", href).setAttribute("rel", "nofollow ugc noopener");

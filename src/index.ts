@@ -181,7 +181,11 @@ async function detail(db: D1Database, name: string, md: boolean): Promise<Respon
     : [];
   const path = `/packages/${p.name}`;
   const total = p.works + p.broken;
-  const description = `${STATUS[p.status].label}${total ? ` (${p.works} works, ${p.broken} broken reports)` : ""}. ${p.description}`.slice(0, 200);
+  const blurb = p.description.trim().replace(/[^.!?…]$/, "$&.");
+  let description = `${STATUS[p.status].label}${total ? ` (${p.works} works, ${p.broken} broken reports)` : ""}. ${blurb}`.trim();
+  const tail = ` Install command, compatibility reports, and README for ${p.name}.`;
+  if (description.length < 110) description += description.length + tail.length <= 160 ? tail : " Install command and compatibility reports.";
+  if (description.length > 160) description = `${description.slice(0, 159).replace(/\s+\S*$/, "")}…`;
   const jsonld = [
     {
       "@type": "SoftwareSourceCode",
@@ -204,7 +208,8 @@ async function detail(db: D1Database, name: string, md: boolean): Promise<Respon
       ],
     },
   ];
-  const res = html(`${p.name}: ${STATUS[p.status].label} · omp packages`, detailPage(p, reports.results as Report[], extra, new Set(listed)), 200, { description, path, jsonld });
+  const title = `${p.name}: ${STATUS[p.status].label}`;
+  const res = html(title.length > 44 ? title : `${title} · omp packages`, detailPage(p, reports.results as Report[], extra, new Set(listed)), 200, { description, path, jsonld });
   res.headers.set("cache-tag", tag);
   return res;
 }
