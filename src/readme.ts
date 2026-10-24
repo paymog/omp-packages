@@ -71,6 +71,7 @@ export async function renderReadme(md: string, repo: string | null): Promise<str
             return;
           }
           e.setAttribute("src", src).setAttribute("loading", "lazy").setAttribute("referrerpolicy", "no-referrer");
+          if (!e.hasAttribute("alt")) e.setAttribute("alt", "");
         }
       },
     })

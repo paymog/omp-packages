@@ -1,5 +1,5 @@
 import { renderReadme } from "./readme";
-import { OMP_KEYWORDS, SCRIPT, SITE, SORTS, STATUS, aboutPage, badge, detailMarkdown, detailPage, esc, layout, listMarkdown, listPage, listingPage, messagePage, privacyPage, type Extra, type Head, type ListView, type Pkg, type Report, type Status } from "./views";
+import { BROWSE_KEYS, OMP_KEYWORDS, SCRIPT, SITE, SORTS, STATUS, aboutPage, badge, browsePage, detailMarkdown, detailPage, esc, layout, listMarkdown, listPage, listingPage, messagePage, privacyPage, type Extra, type Head, type ListView, type Pkg, type Report, type Status } from "./views";
 
 const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
 const NPM_PAGE = 250;
@@ -301,10 +301,25 @@ async function badgeSvg(db: D1Database, name: string): Promise<Response> {
 async function sitemap(db: D1Database): Promise<Response> {
   const { results } = await db.prepare("SELECT name, published_at FROM packages ORDER BY name").all<{ name: string; published_at: string | null }>();
   const loc = (path: string, lastmod?: string | null) => `<url><loc>${esc(SITE + path)}</loc>${lastmod ? `<lastmod>${lastmod.slice(0, 10)}</lastmod>` : ""}</url>`;
-  const urls = [...["/", "/get-listed", "/about", "/privacy", ...STATUSES.map((s) => `/?status=${s}`)].map((p) => loc(p)), ...results.map((r) => loc(`/packages/${r.name}`, r.published_at))];
+  const urls = [...["/", "/get-listed", "/about", "/privacy", ...STATUSES.map((s) => `/?status=${s}`), ...BROWSE_KEYS.map((k) => `/browse/${k}`)].map((p) => loc(p)), ...results.map((r) => loc(`/packages/${r.name}`, r.published_at))];
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.join("")}</urlset>`, {
     headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" },
   });
+}
+
+// Every package gets a link from a page two clicks from home; deep list pagination alone leaves most of them orphaned for crawlers.
+async function browse(db: D1Database, key: string): Promise<Response> {
+  const [lo, hi] = key === "0-9" ? ["0", ":"] : [key, String.fromCharCode(key.charCodeAt(0) + 1)];
+  const { results } = await db
+    .prepare("SELECT name, status, description FROM packages WHERE (name >= ?1 AND name < ?2) OR (name >= '@' || ?1 AND name < '@' || ?2) ORDER BY ltrim(name, '@')")
+    .bind(lo, hi)
+    .all<Pick<Pkg, "name" | "status" | "description">>();
+  const res = html(`Packages: ${key.toUpperCase()} · omp packages`, browsePage(key, results), 200, {
+    path: `/browse/${key}`,
+    description: `All ${results.length} oh-my-pi (omp) and pi packages whose name or scope starts with ${key.toUpperCase()}, with their omp compatibility status.`,
+  });
+  res.headers.set("cache-tag", "list");
+  return res;
 }
 
 // README HTML is untrusted; the CSP backs up the sanitizer by allowing only the page's own copy script.
@@ -337,6 +352,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (url.pathname === "/about") return html("About · omp packages", aboutPage(), 200, { path: "/about", description: "What omp packages is, where its data comes from, and how it decides whether a pi package works on oh-my-pi (omp)." });
   if (url.pathname === "/privacy") return html("Privacy · omp packages", privacyPage(), 200, { path: "/privacy", description: "What omp packages stores about visitors and reporters: a one-way hash of the IP address and package name, and nothing else." });
   if (url.pathname === "/sitemap.xml") return sitemap(env.DB);
+  const br = url.pathname.match(/^\/browse\/([a-z]|0-9)$/);
+  if (br) return browse(env.DB, br[1]);
   let path: string;
   try {
     path = decodeURIComponent(url.pathname);

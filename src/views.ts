@@ -436,6 +436,20 @@ export function messagePage(title: string, body: string): string {
   return `<div class="wrap prose message"><h1>${esc(title)}</h1><p>${body}</p><p><a href="/">Back to all packages</a></p></div>`;
 }
 
+export const BROWSE_KEYS = [..."abcdefghijklmnopqrstuvwxyz", "0-9"];
+
+const browseNav = (current?: string) =>
+  `<nav class="az" aria-label="Browse by letter">${BROWSE_KEYS.map((k) => `<a href="/browse/${k}"${k === current ? ' aria-current="page"' : ""}>${k.toUpperCase()}</a>`).join("")}</nav>`;
+
+export function browsePage(key: string, rows: Pick<Pkg, "name" | "status" | "description">[]): string {
+  return `<div class="wrap prose">
+  <h1>Packages: ${esc(key.toUpperCase())}</h1>
+  <p class="lede">Every listed package whose name, or scope, starts with ${esc(key.toUpperCase())}.</p>
+  ${browseNav(key)}
+  <ul class="browse">${rows.map((p) => `<li><a href="${pkgHref(p.name)}">${esc(p.name)}</a> <span class="pill s-${p.status}">${STATUS[p.status].pill}</span>${p.description ? ` <span class="desc">${esc(p.description)}</span>` : ""}</li>`).join("")}</ul>
+</div>`;
+}
+
 /* Direction contract
 THESIS: A package registry where omp compatibility is the headline, not a footnote. Refuses the pi.dev catalog grid and download-first ranking cards.
 OWN-WORLD: Registry canon (crates.io, jsr, hex, pkg.go.dev): ink-violet header band with a central search, cool neutral page, one violet accent. Status pills in four fixed colours: violet built-for-omp, green works, red broken, grey untested. System sans, mono only for commands and versions. Lucide icons.
@@ -493,6 +507,9 @@ code{font-size:.9em}
 main{flex:1;padding:2.25rem 0 4rem}
 .site-foot{border-top:1px solid var(--border);color:var(--muted);font-size:.85rem;padding:1.5rem 0}
 .site-foot a{color:inherit}
+.az{display:flex;flex-wrap:wrap;gap:.15rem .55rem;margin:.6rem 0 0}
+.browse{list-style:none;padding:0;margin:1.5rem 0 0}.browse li{padding:.45rem 0;border-bottom:1px solid var(--border)}
+.browse .desc{display:block;color:var(--muted);font-size:.9rem}
 .pill{display:inline-flex;align-items:center;gap:.3rem;font-size:.75rem;font-weight:600;line-height:1;padding:.3rem .55rem .3rem .4rem;border-radius:999px;background:var(--st-bg);color:var(--st);white-space:nowrap}
 .s-native{--st:var(--native);--st-bg:var(--native-bg)}.s-works{--st:var(--works);--st-bg:var(--works-bg)}
 .s-broken{--st:var(--broken);--st-bg:var(--broken-bg)}.s-untested{--st:var(--untested);--st-bg:var(--untested-bg)}
@@ -670,7 +687,7 @@ ${(h.jsonld ?? []).map((j) => `<script type="application/ld+json">${JSON.stringi
   <nav aria-label="Site"><a href="/get-listed"${h.nav === "listing" ? ' aria-current="page"' : ""}>Get listed</a><a href="https://github.com/can1357/oh-my-pi">oh-my-pi${icon("external", 13)}</a></nav>
 </div></header>
 <main>${body}</main>
-<footer class="site-foot"><div class="wrap">Package data from the npm registry, refreshed every few hours. Not affiliated with oh-my-pi. <a href="/about">About</a> · <a href="/privacy">Privacy</a> · <a href="https://github.com/paymog/omp-packages">Source on GitHub</a>.</div></footer>
+<footer class="site-foot"><div class="wrap">Package data from the npm registry, refreshed every few hours. Not affiliated with oh-my-pi. <a href="/about">About</a> · <a href="/privacy">Privacy</a> · <a href="https://github.com/paymog/omp-packages">Source on GitHub</a>.${browseNav()}</div></footer>
 <script>${SCRIPT}</script>
 </body></html>`;
 }
