@@ -111,7 +111,8 @@ async function list(db: D1Database, url: URL, md: boolean): Promise<Response> {
   // Sorting and counting read every match, so cap matches to bound the rows a broad search reads.
   const searchable = [...q].length >= 3;
   const match = searchable ? "packages_fts MATCH ?1" : "0";
-  const from = q ? `(SELECT rowid FROM packages_fts WHERE ${match} LIMIT ${SEARCH_CAP}) f JOIN packages p ON p.rowid = f.rowid` : "packages p";
+  // CROSS JOIN keeps the FTS matches as the outer loop; with a status filter, SQLite otherwise scans every package of that status.
+  const from = q ? `(SELECT rowid FROM packages_fts WHERE ${match} LIMIT ${SEARCH_CAP}) f CROSS JOIN packages p ON p.rowid = f.rowid` : "packages p";
   const phrase = `"${q.replaceAll('"', '""')}"`;
   const where: string[] = [];
   const params: string[] = q && searchable ? [phrase] : [];
