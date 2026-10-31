@@ -71,13 +71,18 @@ const BADGE: Record<Status, [string, string]> = {
 export const badgeValue = (status: Status | null, tested: boolean) =>
   !status ? "not listed" : tested && status !== "broken" ? `${BADGE[status][0]} · tested` : BADGE[status][0];
 
+// Verdana advance widths at 110px (the badge draws text at 10x and scales by 0.1, like shields.io).
+const VERDANA: Record<string, number> = { a: 66, b: 69, c: 57, d: 69, e: 66, f: 39, g: 69, h: 70, i: 30, j: 38, k: 65, l: 30, m: 107, n: 70, o: 67, p: 69, q: 69, r: 47, s: 57, t: 43, u: 70, v: 65, w: 90, x: 65, y: 65, z: 58, " ": 39, "·": 40 };
+
 export function badge(status: Status | null, tested: boolean): string {
   const value = badgeValue(status, tested);
   const color = BADGE[status ?? "untested"][1];
-  // ponytail: ~6.5px per Verdana 11px glyph; textLength pins text to that width, so no font metrics needed
-  const w = (s: string) => Math.round(s.length * 6.5) + 12;
-  const lw = w("omp"), vw = w(value), tw = lw + vw;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="20" role="img" aria-label="omp: ${value}"><title>omp: ${value}</title><clipPath id="r"><rect width="${tw}" height="20" rx="3"/></clipPath><g clip-path="url(#r)"><rect width="${lw}" height="20" fill="#555"/><rect x="${lw}" width="${vw}" height="20" fill="${color}"/></g><g fill="#fff" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11" text-anchor="middle"><text x="${lw / 2}" y="14" textLength="${lw - 12}">omp</text><text x="${lw + vw / 2}" y="14" textLength="${vw - 12}">${value}</text></g></svg>`;
+  const text = (s: string) => [...s].reduce((n, c) => n + (VERDANA[c] ?? 70), 0);
+  const lt = text("omp"), vt = text(value);
+  const lw = Math.ceil(lt / 10) + 10, vw = Math.ceil(vt / 10) + 10, tw = lw + vw;
+  const label = (x: number, len: number, s: string) =>
+    `<text aria-hidden="true" x="${x * 10}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="${len}">${s}</text><text x="${x * 10}" y="140" transform="scale(.1)" textLength="${len}">${s}</text>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="20" role="img" aria-label="omp: ${value}"><title>omp: ${value}</title><linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient><clipPath id="r"><rect width="${tw}" height="20" rx="3" fill="#fff"/></clipPath><g clip-path="url(#r)"><rect width="${lw}" height="20" fill="#555"/><rect x="${lw}" width="${vw}" height="20" fill="${color}"/><rect width="${tw}" height="20" fill="url(#s)"/></g><g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110">${label(lw / 2, lt, "omp")}${label(lw + vw / 2, vt, value)}</g></svg>`;
 }
 
 export const SORTS: Record<string, { label: string; sql: string }> = {
