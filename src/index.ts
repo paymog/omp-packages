@@ -1,5 +1,5 @@
 import { renderReadme } from "./readme";
-import { BROWSE_KEYS, OMP_KEYWORDS, SCRIPT, SITE, SORTS, STATUS, aboutPage, badge, browsePage, detailMarkdown, detailPage, esc, layout, listMarkdown, listPage, listingPage, messagePage, privacyPage, type Extra, type Head, type ListView, type Pkg, type Report, type Status } from "./views";
+import { BROWSE_KEYS, OMP_KEYWORDS, SCRIPT, SITE, SORTS, STATUS, TESTED_POOL, aboutPage, badge, browsePage, detailMarkdown, detailPage, esc, layout, listMarkdown, listPage, listingPage, messagePage, privacyPage, testReportPage, testSummary, type Extra, type Head, type ListView, type Pkg, type Report, type Status, type TestResult } from "./views";
 
 const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
 const NPM_PAGE = 250;
@@ -295,14 +295,32 @@ async function report(db: D1Database, req: Request, name: string, ctx: Execution
 }
 
 async function badgeSvg(db: D1Database, name: string): Promise<Response> {
-  const row = await db.prepare("SELECT status FROM packages WHERE name = ?1").bind(name).first<{ status: Status }>();
-  return new Response(badge(row?.status ?? null), { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=3600", "cache-tag": `pkg:${name}` } });
+  const row = await db
+    .prepare("SELECT status, EXISTS (SELECT 1 FROM reports WHERE name = ?1 AND ip_hash = ?2 AND status = 'works') AS tested FROM packages WHERE name = ?1")
+    .bind(name, OUR_TESTS)
+    .first<{ status: Status; tested: number }>();
+  return new Response(badge(row?.status ?? null, Boolean(row?.tested)), { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=3600", "cache-tag": `pkg:${name}` } });
+}
+
+async function testReport(db: D1Database): Promise<Response> {
+  const { results } = await db
+    .prepare("SELECT r.name, r.status, r.note, r.created_at, p.monthly_downloads FROM reports r JOIN packages p USING (name) WHERE r.ip_hash = ?1 ORDER BY p.monthly_downloads DESC")
+    .bind(OUR_TESTS)
+    .all<TestResult>();
+  const s = testSummary(results);
+  const res = html(`${s.pct}% of top pi packages work on omp: install test results`, testReportPage(results), 200, {
+    nav: "report",
+    path: "/report",
+    description: `We installed the ${TESTED_POOL} most-downloaded pi packages on oh-my-pi (omp) ${s.omp}. ${s.works} work and ${s.broken} fail. See each result and why packages break.`,
+  });
+  res.headers.set("cache-tag", "list");
+  return res;
 }
 
 async function sitemap(db: D1Database): Promise<Response> {
   const { results } = await db.prepare("SELECT name, published_at FROM packages ORDER BY name").all<{ name: string; published_at: string | null }>();
   const loc = (path: string, lastmod?: string | null) => `<url><loc>${esc(SITE + path)}</loc>${lastmod ? `<lastmod>${lastmod.slice(0, 10)}</lastmod>` : ""}</url>`;
-  const urls = [...["/", "/get-listed", "/about", "/privacy", ...STATUSES.map((s) => `/?status=${s}`), ...BROWSE_KEYS.map((k) => `/browse/${k}`)].map((p) => loc(p)), ...results.map((r) => loc(`/packages/${r.name}`, r.published_at))];
+  const urls = [...["/", "/report", "/get-listed", "/about", "/privacy", ...STATUSES.map((s) => `/?status=${s}`), ...BROWSE_KEYS.map((k) => `/browse/${k}`)].map((p) => loc(p)), ...results.map((r) => loc(`/packages/${r.name}`, r.published_at))];
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.join("")}</urlset>`, {
     headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" },
   });
@@ -349,6 +367,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   // Search has its own path because the free rate-limit rule can match only on path.
   if (url.pathname === "/" && url.searchParams.has("q")) return new Response(null, { status: 301, headers: { location: `/search${url.search}` } });
   if (url.pathname === "/" || url.pathname === "/search") return list(env.DB, url, md);
+  if (url.pathname === "/report") return testReport(env.DB);
   if (url.pathname === "/get-listed") return html("Get listed · omp packages", listingPage(), 200, { nav: "listing", path: "/get-listed", description: "Publish an oh-my-pi (omp) plugin to npm with an omp keyword and it appears in the omp packages catalog." });
   if (url.pathname === "/about") return html("About · omp packages", aboutPage(), 200, { path: "/about", description: "What omp packages is, where its data comes from, and how it decides whether a pi package works on oh-my-pi (omp)." });
   if (url.pathname === "/privacy") return html("Privacy · omp packages", privacyPage(), 200, { path: "/privacy", description: "What omp packages stores about visitors and reporters: a one-way hash of the IP address and package name, and nothing else." });

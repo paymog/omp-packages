@@ -68,8 +68,12 @@ const BADGE: Record<Status, [string, string]> = {
   untested: ["untested", "#6e6e80"],
 };
 
-export function badge(status: Status | null): string {
-  const [value, color] = status ? BADGE[status] : ["not listed", BADGE.untested[1]];
+export const badgeValue = (status: Status | null, tested: boolean) =>
+  !status ? "not listed" : tested && status !== "broken" ? `${BADGE[status][0]} · tested` : BADGE[status][0];
+
+export function badge(status: Status | null, tested: boolean): string {
+  const value = badgeValue(status, tested);
+  const color = BADGE[status ?? "untested"][1];
   // ponytail: ~6.5px per Verdana 11px glyph; textLength pins text to that width, so no font metrics needed
   const w = (s: string) => Math.round(s.length * 6.5) + 12;
   const lw = w("omp"), vw = w(value), tw = lw + vw;
@@ -231,6 +235,7 @@ function verdict(p: Pkg): { title: string; body: string } {
 }
 
 export function detailPage(p: Pkg, reports: Report[], x: Extra | null, listed: Set<string>): string {
+  const tested = reports.some((r) => r.ours && r.status === "works");
   const v = verdict(p);
   const total = p.works + p.broken;
   const keywords: string[] = JSON.parse(p.keywords);
@@ -301,7 +306,7 @@ export function detailPage(p: Pkg, reports: Report[], x: Extra | null, listed: S
       </section>
       <section class="box badge">
         <h2>Badge</h2>
-        <img src="/badge/${esc(p.name)}.svg" alt="omp: ${BADGE[p.status][0]}" height="20">
+        <img src="/badge/${esc(p.name)}.svg" alt="omp: ${badgeValue(p.status, tested)}" height="20">
         ${copyButton(`[![omp status](${SITE}/badge/${p.name}.svg)](${SITE}/packages/${p.name})`, "Copy Markdown")}
       </section>
       <section class="box">
@@ -378,7 +383,7 @@ export function aboutPage(): string {
   <h2>How a status is decided</h2>
   <p>If more people report a package as broken than as working, it shows as <strong>Broken on omp</strong>. Otherwise, a package with an omp keyword shows as <strong>Built for omp</strong>. A package with at least one working report shows as <strong>Works on omp</strong>. Everything else is <strong>Untested on omp</strong>. Anyone can send one report per package, and a new report replaces their old one.</p>
   <h2 id="testing">Tested by omp packages</h2>
-  <p>We test the most-downloaded Pi packages ourselves. Each package is installed with <code>omp plugin install</code> in a clean container, then omp starts with the package loaded. A package passes when it installs, loads without errors, and adds commands, tools, or skills. The test does not call those tools, so a pass means the package loads on omp, not that every feature works. Our result counts as one report, and the note shows the omp version and any error.</p>
+  <p>We test the most-downloaded Pi packages ourselves. Each package is installed with <code>omp plugin install</code> in a clean container, then omp starts with the package loaded. A package passes when it installs, loads without errors, and adds commands, tools, or skills. The test does not call those tools, so a pass means the package loads on omp, not that every feature works. Our result counts as one report, and the note shows the omp version and any error. A package that passes shows “tested” on its badge. <a href="/report">Read the results</a>.</p>
   <h2>Contact</h2>
   <p>This site is not affiliated with oh-my-pi or Stencil Labs. To report a wrong listing, ask for a package to be removed, or suggest a change, open an issue at <a href="https://github.com/paymog/omp-packages/issues">github.com/paymog/omp-packages</a>. The source code is in the same repository.</p>
 </div>`;
@@ -447,6 +452,66 @@ export function browsePage(key: string, rows: Pick<Pkg, "name" | "status" | "des
   <p class="lede">Every listed package whose name, or scope, starts with ${esc(key.toUpperCase())}.</p>
   ${browseNav(key)}
   <ul class="browse">${rows.map((p) => `<li><a href="${pkgHref(p.name)}">${esc(p.name)}</a> <span class="pill s-${p.status}">${STATUS[p.status].pill}</span>${p.description ? ` <span class="desc">${esc(p.description)}</span>` : ""}</li>`).join("")}</ul>
+</div>`;
+}
+
+export interface TestResult {
+  name: string;
+  status: "works" | "broken";
+  note: string;
+  created_at: string;
+  monthly_downloads: number;
+}
+
+export const TESTED_POOL = 200;
+
+export function testSummary(rows: TestResult[]) {
+  const works = rows.filter((r) => r.status === "works").length;
+  return {
+    works,
+    broken: rows.length - works,
+    pct: rows.length ? Math.round((works / rows.length) * 100) : 0,
+    omp: rows[0]?.note.match(/omp ([\d.]+)/)?.[1] ?? "?",
+    date: rows.reduce((d, r) => (r.created_at < d ? r.created_at : d), rows[0]?.created_at ?? "").slice(0, 10),
+  };
+}
+
+// First match wins; order goes from the most specific error text to the most general.
+const CAUSES: [RegExp, string][] = [
+  [/Export named '.+' not found in module/, "Imports a pi export that omp does not provide"],
+  [/typebox|Type\.\w+ is not a function/, "Expects the TypeBox schema library that pi provides"],
+  [/is not a function/, "Calls a pi API that omp does not have"],
+];
+const OTHER_CAUSE = "Another error at install or startup";
+
+export function testReportPage(rows: TestResult[]): string {
+  const s = testSummary(rows);
+  const broken = rows.filter((r) => r.status === "broken");
+  const causes = new Map<string, number>();
+  for (const r of broken) {
+    const cause = CAUSES.find(([re]) => re.test(r.note))?.[1] ?? OTHER_CAUSE;
+    causes.set(cause, (causes.get(cause) ?? 0) + 1);
+  }
+  const list = (status: "works" | "broken") =>
+    `<ul class="browse">${rows
+      .filter((r) => r.status === status)
+      .map((r) => `<li><a href="${pkgHref(r.name)}">${esc(r.name)}</a> ${pill(r.status)} <span class="quiet num">${compact.format(r.monthly_downloads)}/mo</span><span class="desc">${esc(r.note.replace(/^Tested on omp [\d.]+: /, "")).replace(/`([^`]+)`/g, "<code>$1</code>")}</span></li>`)
+      .join("")}</ul>`;
+  return `<div class="wrap prose">
+  <h1>We installed the top ${TESTED_POOL} pi packages on omp</h1>
+  <p class="lede">${s.pct}% of them work. Of the ${rows.length} packages with a clear result, ${s.works} install and load on omp ${esc(s.omp)}, and ${s.broken} fail.</p>
+  <h2>How we tested</h2>
+  <p>On ${esc(s.date)}, we took the ${TESTED_POOL} most-downloaded pi packages on npm. We installed each one with <code>omp plugin install</code> in a clean container, then started omp with the package loaded. A package passes when it installs, loads without errors, and adds commands, tools, or skills. The test does not call those tools, so a pass means the package loads on omp, not that every feature works.</p>
+  <p>The other ${TESTED_POOL - rows.length} packages need a companion package, an API key, or other setup before they start. The test cannot tell whether omp is at fault, so they stay untested.</p>
+  <h2>Why packages break</h2>
+  <p>Most failures come from gaps in omp's compatibility layer for pi packages, not from bugs in the packages.</p>
+  <ul>${[...causes].sort((a, b) => b[1] - a[1]).map(([c, n]) => `<li>${c}: <span class="num">${n}</span></li>`).join("")}</ul>
+  <h2>Packages that work <span class="quiet num">${s.works}</span></h2>
+  ${list("works")}
+  <h2>Packages that fail <span class="quiet num">${s.broken}</span></h2>
+  ${list("broken")}
+  <h2>Add your result</h2>
+  <p>A pass shows only that a package loads. If a package works or fails for you, report it on its page; your report counts the same as ours. Authors of packages that pass can add the badge from their package page. It reads <img src="/badge/pi-mcp-adapter.svg" alt="omp: works · tested" height="20" style="vertical-align:middle">.</p>
 </div>`;
 }
 
@@ -666,7 +731,7 @@ export interface Head {
   path?: string; // canonical path; omit for pages that should not be indexed
   jsonld?: object[];
   q?: string;
-  nav?: "listing";
+  nav?: "listing" | "report";
 }
 
 export function layout(title: string, body: string, h: Head = {}): string {
@@ -684,7 +749,7 @@ ${(h.jsonld ?? []).map((j) => `<script type="application/ld+json">${JSON.stringi
 <header class="band"><div class="wrap">
   <a class="brand" href="/">${icon("package", 22)}omp packages</a>
   <form class="search" action="/search" role="search">${icon("search", 18)}<input type="search" name="q" value="${esc(h.q ?? "")}" placeholder="Search packages" aria-label="Search packages"><button>Search</button></form>
-  <nav aria-label="Site"><a href="/get-listed"${h.nav === "listing" ? ' aria-current="page"' : ""}>Get listed</a><a href="https://github.com/can1357/oh-my-pi">oh-my-pi${icon("external", 13)}</a></nav>
+  <nav aria-label="Site"><a href="/report"${h.nav === "report" ? ' aria-current="page"' : ""}>Test results</a><a href="/get-listed"${h.nav === "listing" ? ' aria-current="page"' : ""}>Get listed</a><a href="https://github.com/can1357/oh-my-pi">oh-my-pi${icon("external", 13)}</a></nav>
 </div></header>
 <main>${body}</main>
 <footer class="site-foot"><div class="wrap">Package data from the npm registry, refreshed every few hours. Not affiliated with oh-my-pi. <a href="/about">About</a> · <a href="/privacy">Privacy</a> · <a href="https://github.com/paymog/omp-packages">Source on GitHub</a>.${browseNav()}</div></footer>
