@@ -299,10 +299,7 @@ async function badgeSvg(db: D1Database, name: string): Promise<Response> {
     .prepare("SELECT status, EXISTS (SELECT 1 FROM reports WHERE name = ?1 AND ip_hash = ?2 AND status = 'works') AS tested FROM packages WHERE name = ?1")
     .bind(name, OUR_TESTS)
     .first<{ status: Status; tested: number }>();
-  // GitHub's camo proxy caches by Cache-Control, so no-cache keeps README badges current; the edge still caches, and reports purge it by tag.
-  return new Response(badge(row?.status ?? null, Boolean(row?.tested)), {
-    headers: { "content-type": "image/svg+xml", "cache-control": "no-cache", "cloudflare-cdn-cache-control": "public, max-age=3600", "cache-tag": `pkg:${name}` },
-  });
+  return new Response(badge(row?.status ?? null, Boolean(row?.tested)), { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=3600", "cache-tag": `pkg:${name}` } });
 }
 
 async function testReport(db: D1Database): Promise<Response> {
