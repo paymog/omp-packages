@@ -23,6 +23,7 @@ export interface Report {
 }
 
 export interface Extra {
+  author: string | null;
   readme: string; // sanitized HTML
   license: string | null;
   homepage: string | null;
@@ -173,7 +174,7 @@ export function listPage(v: ListView): string {
     <div class="row-head"><a class="row-name" href="${pkgHref(p.name)}">${esc(p.name)}</a><span class="ver">${esc(p.version)}</span>${pill(p.status)}</div>
     ${p.description ? `<p class="desc">${esc(p.description)}</p>` : ""}
     <div class="meta">
-      ${p.author ? `<span>${icon("user", 14)}${esc(p.author)}</span>` : ""}
+      ${p.author ? `<span>${icon("user", 14)}Published by ${esc(p.author)}</span>` : ""}
       <span class="num">${icon("download", 14)}${compact.format(p.monthly_downloads)}/mo</span>
       <span>${icon("clock", 14)}${ago(p.published_at)}</span>
     </div>
@@ -272,7 +273,7 @@ export function detailPage(p: Pkg, reports: Report[], x: Extra | null, listed: S
     <h1><span class="pkg-name">${esc(p.name)}</span><span class="ver">${esc(p.version)}</span></h1>
     ${p.description ? `<p class="lede">${esc(p.description)}</p>` : ""}
     <div class="meta">
-      ${p.author ? `<span>${icon("user", 14)}${esc(p.author)}</span>` : ""}
+      ${p.author ? `<span>${icon("user", 14)}Published by ${esc(p.author)}</span>` : ""}
       <span>${icon("clock", 14)}Published ${ago(p.published_at)}</span>
       ${x?.license ? `<span>${icon("scale", 14)}${esc(x.license)}</span>` : ""}
       <span class="num">${icon("download", 14)}~${compact.format(p.monthly_downloads)} downloads/mo</span>
@@ -336,6 +337,7 @@ export function detailPage(p: Pkg, reports: Report[], x: Extra | null, listed: S
           ${row("Files", x?.files ? whole.format(x.files) : null, "num")}
           ${row("Provides", x?.provides.map(([k, n]) => `${esc(k)} <span class="quiet num">${n}</span>`).join(", "))}
           ${row("Engines", x && Object.entries(x.engines).map(([k, v]) => `${esc(k)} ${esc(String(v))}`).join(", "), "mono")}
+          ${row("Author", x?.author && esc(x.author))}
           ${row("Maintainers", x?.maintainers.map((n) => esc(String(n))).join(", "))}
         </dl>
         ${keywords.length ? `<ul class="tags">${keywords
