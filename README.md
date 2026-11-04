@@ -21,7 +21,7 @@ Many pi packages do not work on omp. This site lists them and lets users report 
 - Search uses an FTS5 trigram index (`packages_fts`) and reads only matching rows. It considers at most 1,000 matches (shown as "1,000+"), so a broad search reads about 6,000 rows. It lives at `/search` because free Cloudflare rules match only on path. Two zone rules cover it: a JS challenge, which browsers pass without a click (scrapers rotate proxy IPs, so per-IP limits miss them), and a rate limit of 3 searches per 10 seconds per IP. `/?q=` redirects there.
 - If a request throws (usually the D1 daily limit), the Worker returns 503 with `Retry-After: 3600` so crawlers retry instead of dropping pages.
 - Agents: send `Accept: text/markdown` to the list or a package page to get Markdown. `/llms.txt` describes the site. `/about` and `/privacy` explain the data and what is stored.
-- After each sync run, the Worker sends the URLs of changed packages to IndexNow (Bing, Yandex, and others). Google reads the sitemap through Search Console. The domain is verified in Google Search Console and Bing Webmaster Tools by DNS records on the Cloudflare zone; do not delete the `google-site-verification` TXT record or the Bing CNAME.
+- After each sync run, the Worker sends the URLs of changed packages to IndexNow through `yandex.com/indexnow`, which shares them with Bing and the other engines. `api.indexnow.org` and `bing.com/indexnow` return 429 to Cloudflare Workers. Google reads the sitemap through Search Console. The domain is verified in Google Search Console and Bing Webmaster Tools by DNS records on the Cloudflare zone; do not delete the `google-site-verification` TXT record or the Bing CNAME.
 - Design notes: `PRODUCT.md` and `DESIGN.md`.
 
 ## Develop

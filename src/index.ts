@@ -74,7 +74,8 @@ async function sync(db: D1Database): Promise<void> {
     ...(wrapped ? [db.prepare(REFRESH_COUNTS)] : []),
   ]);
   if (changed.length) {
-    const res = await fetch("https://api.indexnow.org/indexnow", {
+    // api.indexnow.org and bing.com return 429 to Cloudflare's shared egress IPs; Yandex accepts and shares with Bing.
+    const res = await fetch("https://yandex.com/indexnow", {
       method: "POST",
       headers: { "content-type": "application/json; charset=utf-8" },
       body: JSON.stringify({ host: new URL(SITE).host, key: INDEXNOW_KEY, urlList: changed.map((n) => `${SITE}/packages/${n}`) }),
