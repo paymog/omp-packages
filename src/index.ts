@@ -199,7 +199,7 @@ async function detail(db: D1Database, name: string, md: boolean): Promise<Respon
       version: p.version,
       codeRepository: p.repo_url ?? undefined,
       license: extra?.license ?? undefined,
-      author: p.author ? { "@type": "Person", name: p.author } : undefined,
+      author: extra?.author ? { name: extra.author } : undefined,
     },
     {
       "@type": "BreadcrumbList",
@@ -217,6 +217,7 @@ async function detail(db: D1Database, name: string, md: boolean): Promise<Respon
 }
 
 interface Manifest {
+  author?: string | { name?: string };
   license?: string | { type?: string };
   homepage?: string;
   bugs?: string | { url?: string };
@@ -247,6 +248,7 @@ async function npmExtra(name: string): Promise<Extra | null> {
   const bugs = typeof m.bugs === "string" ? m.bugs : m.bugs?.url;
   const http = (u?: string) => (u && /^https?:\/\//.test(u) ? u : null);
   return {
+    author: (typeof m.author === "string" ? m.author.split(/[<(]/, 1)[0] : m.author?.name)?.trim() || null,
     readme: doc.readme && doc.readme !== "ERROR: No README data found!" ? doc.readme : "",
     license: license ?? null,
     homepage: http(m.homepage),
