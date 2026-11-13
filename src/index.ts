@@ -304,8 +304,9 @@ async function badgeSvg(db: D1Database, name: string): Promise<Response> {
 }
 
 async function testReport(db: D1Database): Promise<Response> {
+  // An install-test run writes every row with one created_at, so the latest timestamp is the latest run.
   const { results } = await db
-    .prepare("SELECT r.name, r.status, r.note, r.created_at, p.monthly_downloads FROM reports r JOIN packages p USING (name) WHERE r.ip_hash = ?1 ORDER BY p.monthly_downloads DESC")
+    .prepare("SELECT r.name, r.status, r.note, r.created_at, p.monthly_downloads FROM reports r JOIN packages p USING (name) WHERE r.ip_hash = ?1 AND r.created_at = (SELECT MAX(created_at) FROM reports WHERE ip_hash = ?1) ORDER BY p.monthly_downloads DESC")
     .bind(OUR_TESTS)
     .all<TestResult>();
   const s = testSummary(results);
