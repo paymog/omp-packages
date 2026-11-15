@@ -3,7 +3,8 @@ import { BROWSE_KEYS, OMP_KEYWORDS, SCRIPT, SITE, SORTS, STATUS, TESTED_POOL, ab
 
 const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
 const NPM_PAGE = 250;
-const PAGES_PER_RUN = 5; // ponytail: npm search returns 429 on bursts; full crawl takes ~6h at one run per 30 min
+const PAGES_PER_RUN = 5; // ponytail: npm search returns 429 on bursts; full crawl takes ~3h at one run per 30 min
+const NPM_SEARCH_MAX = 5250; // npm search ignores from > 5000 and repeats one page, so later results are unreachable
 const LIST_PAGE = 50;
 const INDEXNOW_KEY = "a3b4b96ec6b1788a83a65e91f983cbf1"; // public by design; public/<key>.txt proves ownership
 
@@ -64,7 +65,7 @@ async function sync(db: D1Database): Promise<void> {
       results.forEach((r, j) => r.meta.changes && changed.push(rows[j].package.name));
     }
     cur.from += NPM_PAGE;
-    if (!objects.length || cur.from >= total) {
+    if (!objects.length || cur.from >= Math.min(total, NPM_SEARCH_MAX)) {
       cur = { k: (cur.k + 1) % KEYWORDS.length, from: 0 };
       wrapped ||= cur.k === 0;
     }
@@ -263,15 +264,22 @@ async function npmExtra(name: string): Promise<Extra | null> {
   };
 }
 
-async function report(db: D1Database, req: Request, name: string, ctx: ExecutionContext): Promise<Response> {
+async function report(db: D1Database, req: Request, name: string, ctx: ExecutionContext, secret: string): Promise<Response> {
   const form = await req.formData();
   const status = form.get("status");
   if (status !== "works" && status !== "broken") {
     return html("Report not saved · omp packages", messagePage("Report not saved", `Choose “It works” or “It's broken”, then submit again. <a href="/packages/${esc(name)}">Back to ${esc(name)}</a>`), 400);
   }
+  const ip = req.headers.get("CF-Connecting-IP") ?? "unknown";
+  const check = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+    method: "POST",
+    body: new URLSearchParams({ secret, response: String(form.get("cf-turnstile-response") ?? ""), remoteip: ip }),
+  }).then((r) => r.json<{ success: boolean }>());
+  if (!check.success) {
+    return html("Report not saved · omp packages", messagePage("Report not saved", `The bot check did not pass. Wait a few seconds on the page, then submit again. <a href="/packages/${esc(name)}">Back to ${esc(name)}</a>`), 403);
+  }
   const exists = await db.prepare("SELECT 1 FROM packages WHERE name = ?1").bind(name).first();
   if (!exists) return notFound(`No package named <code>${esc(name)}</code> is listed, so the report was not saved.`);
-  const ip = req.headers.get("CF-Connecting-IP") ?? "unknown";
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${ip}\n${name}`));
   const ipHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
   await db.batch([
@@ -347,7 +355,7 @@ async function browse(db: D1Database, key: string): Promise<Response> {
 let csp = "";
 async function initCsp(): Promise<void> {
   const hash = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(SCRIPT)))));
-  csp = `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; img-src https: http: data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
+  csp = `default-src 'none'; script-src 'sha256-${hash}' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'unsafe-inline'; img-src https: http: data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
 }
 
 function html(title: string, body: string, status = 200, head: Head = {}): Response {
@@ -387,7 +395,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   const m = path.match(/^\/packages\/(.+?)(\/report)?$/);
   if (!m) return notFound("This page does not exist.");
   const name = m[1];
-  if (m[2] && req.method === "POST") return report(env.DB, req, name, ctx);
+  if (m[2] && req.method === "POST") return report(env.DB, req, name, ctx, env.TURNSTILE_SECRET);
   if (!m[2] && req.method === "GET") return detail(env.DB, name, md);
   return new Response("Method not allowed", { status: 405 });
 }

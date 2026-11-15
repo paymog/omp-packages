@@ -60,6 +60,7 @@ export const STATUS: Record<Status, { label: string; pill: string; icon: string 
 };
 
 export const SITE = "https://omppackages.com";
+const TURNSTILE_SITEKEY = "0x4AAAAAAGCbPI4Tcc_q8uj-";
 
 const BADGE: Record<Status, [string, string]> = {
   native: ["native", "#6d3fd6"],
@@ -298,6 +299,8 @@ export function detailPage(p: Pkg, reports: Report[], x: Extra | null, listed: S
           <label>Package version<input name="version" value="${esc(p.version)}" maxlength="40" class="mono" autocomplete="off"></label>
           <label><span>Notes <span class="quiet">(optional)</span></span><textarea name="note" rows="3" maxlength="500" placeholder="Your omp version, and what failed or what you tested"></textarea></label>
         </div>
+        <div class="cf-turnstile" data-sitekey="${TURNSTILE_SITEKEY}" data-appearance="interaction-only"></div>
+        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
         <div class="form-foot"><button type="submit" class="primary">Submit report</button><p class="quiet">One report per person. A new report replaces your old one.</p></div>
       </form>
       <h3 class="reports-h">Reports <span class="quiet num">${reports.length}</span></h3>
@@ -403,7 +406,7 @@ export function privacyPage(): string {
   <h2>What is public</h2>
   <p>Your report result, version, note, and report date appear on the package page. Do not put personal information in the note.</p>
   <h2>Hosting</h2>
-  <p>The site runs on Cloudflare Workers. Cloudflare processes requests, including IP addresses, to deliver and protect the site, under its own privacy policy. Request logs are kept for a short time for debugging and are not shared.</p>
+  <p>The site runs on Cloudflare Workers. Cloudflare processes requests, including IP addresses, to deliver and protect the site, under its own privacy policy. The report form uses Cloudflare Turnstile to check that a person, not a bot, sends each report. Request logs are kept for a short time for debugging and are not shared.</p>
   <h2>Removal</h2>
   <p>To remove a report you sent, open an issue at <a href="https://github.com/paymog/omp-packages/issues">github.com/paymog/omp-packages</a> with the package name and the date of the report.</p>
 </div>`;

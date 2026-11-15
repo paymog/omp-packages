@@ -53,7 +53,8 @@ npm run deploy         # applies D1 migrations --remote, then wrangler deploy
   - Known hot spots: OFFSET pagination (which is why `robots.txt` blocks `/*sort=`), `/sitemap.xml` (every row), `REFRESH_COUNTS` on each report, `/report` (scans `reports`).
   - A new page that reads D1 must be edge-cacheable and carry a cache tag that the report purge covers.
 - **HTML**: template strings only. Pass every untrusted value through `esc()`. `layout()` adds a canonical URL when `Head.path` is set, and otherwise marks the page `noindex,follow`. JSON-LD escapes `<`.
-- **CSP**: `script-src` allows only the SHA-256 of `SCRIPT`, which is computed once per isolate. Add behaviour by editing `SCRIPT`, never with another inline script. Styles are inline in `CSS`.
+- **CSP**: `script-src` allows only the SHA-256 of `SCRIPT`, which is computed once per isolate, plus `challenges.cloudflare.com` for Turnstile. Add behaviour by editing `SCRIPT`, never with another inline script. Styles are inline in `CSS`.
+- **Report bot check**: the report form carries a Turnstile widget (managed, `interaction-only`). `report()` verifies the token with `siteverify` before any D1 read. The secret is the Worker secret `TURNSTILE_SECRET`; `.dev.vars` holds Cloudflare's always-pass test secret for local dev.
 - **README sanitizer** (`readme.ts`):
   - It is an allowlist. Dropped tags (script, iframe, svg, form, …) lose their content. Unknown tags are unwrapped. Unlisted attributes are stripped.
   - Links: http, https, mailto or `#` only, with `rel="nofollow ugc noopener"`. Images: http or https only.
