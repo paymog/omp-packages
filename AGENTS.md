@@ -8,7 +8,9 @@ omppackages.com is a catalog of oh-my-pi (omp) plugins. It also tracks whether p
 
 One Cloudflare Worker (`src/index.ts`) with one D1 database. Pages are rendered on the server from template strings. There is no framework and no client-side JS beyond the copy-button `SCRIPT`.
 
-- **Sync**: the cron (`*/30`) runs `sync()`. Each run reads up to 5 pages of 250 for one keyword and stores a resume cursor in `meta.cursor`, because npm returns 429 on bursts. A full crawl takes about 6 hours.
+- **Sync**: the cron (`*/30`) runs `crawl()` and then `follow()`.
+  - `crawl()` reads up to 5 pages of 250 for one keyword and stores a resume cursor in `meta.cursor`, because npm search returns 429 on bursts. npm search ignores `from` past 5,000, so each keyword stops at 5,250 results (`NPM_SEARCH_MAX`). A full crawl takes about 3 hours. It refreshes downloads and finds high-ranked packages.
+  - `follow()` reads the npm change feed (`replicate.npmjs.com`) from `meta.seq`, up to `FEED_MAX` changes per run. For each change it fetches `/<name>/latest` and keeps packages with one of our keywords. This finds packages that search cannot reach. The registry blocks an IP for ~10 minutes after about 1,000 manifests in a few minutes; on a 429, `follow()` saves its place and resumes next run.
   - The upsert skips no-op updates. Downloads count as changed only when they move more than 25%. Changed rows are sent to IndexNow.
 - **Status** is computed in SQL by `statusCase()`. Precedence: broken (broken > works) → native (omp keyword) → works → untested. The sync upsert and `report()` share it.
   - Catalog-wide counts are cached in `meta.counts` (`REFRESH_COUNTS`). They refresh after a full crawl and after each report, because live counts would scan every row.
@@ -70,7 +72,7 @@ npm run deploy         # applies D1 migrations --remote, then wrangler deploy
 
 ## Important Files
 
-- `src/index.ts`: `sync()`, `route()`, `list()`, `detail()`, `report()`, `badgeSvg()`, `testReport()`, `sitemap()`, `browse()`, and the `fetch`/`scheduled` export.
+- `src/index.ts`: `crawl()`, `follow()`, `route()`, `list()`, `detail()`, `report()`, `badgeSvg()`, `testReport()`, `sitemap()`, `browse()`, and the `fetch`/`scheduled` export.
 - `src/views.ts`: `STATUS`, `SORTS`, `SITE`, `esc()`, `badge()` (Verdana width table, shields-style template), `layout()`, the page renderers, `CSS`, `SCRIPT`, `TESTED_POOL`.
 - `wrangler.jsonc`: D1 binding `DB` (database `omp-packages`), cron, `cache.enabled`, custom domain `omppackages.com`, `assets` → `public/`.
 - `migrations/0003_search_fts.sql`: the external-content FTS5 table, kept in sync by INSERT/DELETE/UPDATE triggers that join on `rowid`. Keep `packages` a rowid table.
@@ -81,7 +83,7 @@ npm run deploy         # applies D1 migrations --remote, then wrangler deploy
 - Node with npm (`package-lock.json`). Not Bun.
 - Wrangler 4, TypeScript 5.9. The only runtime dependency is `marked`.
 - `compatibility_date` is `2026-10-01`, with no `nodejs_compat`. Use Workers APIs (`HTMLRewriter`, `crypto.subtle`, D1 `batch`), not Node built-ins.
-- Free tiers only. The account allows 5M D1 rows read and 100k Worker requests per day. An external watchdog (cf-guard) replaces the Worker with a stub when omp-packages passes 2M rows read in a day. Any deploy resumes the site.
+- The account is on Workers Paid, with a monthly allowance (10M requests, 30M CPU ms, 25B D1 rows read). An external watchdog (cf-guard) replaces the Worker with a stub when omp-packages passes 2M rows read in a day. Any deploy resumes the site.
 
 ## Testing & QA
 

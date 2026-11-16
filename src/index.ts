@@ -5,6 +5,9 @@ const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
 const NPM_PAGE = 250;
 const PAGES_PER_RUN = 5; // ponytail: npm search returns 429 on bursts; full crawl takes ~3h at one run per 30 min
 const NPM_SEARCH_MAX = 5250; // npm search ignores from > 5000 and repeats one page, so later results are unreachable
+const FEED = "https://replicate.npmjs.com/registry";
+const FEED_MAX = 1500; // changes per run; npm sees ~30k a day, and one IP gets a ~10 min 429 after ~1,000 manifests in a few minutes
+const FEED_BATCH = 6;
 const LIST_PAGE = 50;
 const INDEXNOW_KEY = "a3b4b96ec6b1788a83a65e91f983cbf1"; // public by design; public/<key>.txt proves ownership
 
@@ -21,20 +24,40 @@ interface NpmObject {
   downloads?: { monthly?: number };
 }
 
-async function sync(db: D1Database): Promise<void> {
-  const saved = await db.prepare("SELECT value FROM meta WHERE key = 'cursor'").first<string>("value");
-  let cur: { k: number; from: number } = saved ? JSON.parse(saved) : { k: 0, from: 0 };
+interface Row {
+  name: string;
+  version: string;
+  description: string;
+  keywords: string[];
+  author: string;
+  repo: string | null;
+  downloads: number | null;
+  date: string | null;
+}
+
+async function save(db: D1Database, rows: Row[], now: string): Promise<string[]> {
+  if (!rows.length) return [];
   const upsert = db.prepare(
     `INSERT INTO packages (name, version, description, keywords, author, repo_url, monthly_downloads, published_at, source, synced_at, status)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, CASE ?9 WHEN 'omp' THEN 'native' ELSE 'untested' END)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, COALESCE(?7, 0), ?8, ?9, ?10, CASE ?9 WHEN 'omp' THEN 'native' ELSE 'untested' END)
      ON CONFLICT (name) DO UPDATE SET version = ?2, description = ?3, keywords = ?4, author = ?5, repo_url = ?6,
-       monthly_downloads = ?7, published_at = ?8, source = ?9, synced_at = ?10, status = ${statusCase("?9")}
+       monthly_downloads = COALESCE(?7, monthly_downloads), published_at = ?8, source = ?9, synced_at = ?10, status = ${statusCase("?9")}
      WHERE version IS NOT ?2 OR description IS NOT ?3 OR keywords IS NOT ?4 OR author IS NOT ?5 OR repo_url IS NOT ?6
        OR published_at IS NOT ?8 OR source IS NOT ?9 OR abs(monthly_downloads - ?7) * 4 > monthly_downloads`,
   );
+  const results = await db.batch(
+    rows.map((r) =>
+      upsert.bind(r.name, r.version, r.description, JSON.stringify(r.keywords), r.author, r.repo, r.downloads, r.date, r.keywords.some((k) => OMP_KEYWORDS.includes(k)) ? "omp" : "pi", now),
+    ),
+  );
+  return rows.filter((_, j) => results[j].meta.changes).map((r) => r.name);
+}
+
+async function crawl(db: D1Database, now: string): Promise<string[]> {
+  const saved = await db.prepare("SELECT value FROM meta WHERE key = 'cursor'").first<string>("value");
+  let cur: { k: number; from: number } = saved ? JSON.parse(saved) : { k: 0, from: 0 };
   let wrapped = false;
   const changed: string[] = [];
-  const now = new Date().toISOString();
   for (let i = 0; i < PAGES_PER_RUN; i++) {
     const kw = KEYWORDS[cur.k];
     const res = await fetch(`https://registry.npmjs.org/-/v1/search?text=keywords:${kw}&size=${NPM_PAGE}&from=${cur.from}`);
@@ -43,27 +66,19 @@ async function sync(db: D1Database): Promise<void> {
       break;
     }
     const { objects, total } = (await res.json()) as { objects: NpmObject[]; total: number };
-    const rows = objects.filter((o) => o.package.keywords?.includes(kw));
-    if (rows.length) {
-      const results = await db.batch(
-        rows.map(({ package: p, downloads }) => {
-          const kws = p.keywords ?? [];
-          return upsert.bind(
-            p.name,
-            p.version,
-            p.description ?? "",
-            JSON.stringify(kws),
-            p.publisher?.username ?? "",
-            repoUrl(p.links?.repository),
-            downloads?.monthly ?? 0,
-            p.date ?? null,
-            kws.some((k) => OMP_KEYWORDS.includes(k)) ? "omp" : "pi",
-            now,
-          );
-        }),
-      );
-      results.forEach((r, j) => r.meta.changes && changed.push(rows[j].package.name));
-    }
+    const rows = objects
+      .filter((o) => o.package.keywords?.includes(kw))
+      .map(({ package: p, downloads }) => ({
+        name: p.name,
+        version: p.version,
+        description: p.description ?? "",
+        keywords: p.keywords ?? [],
+        author: p.publisher?.username ?? "",
+        repo: repoUrl(p.links?.repository),
+        downloads: downloads?.monthly ?? 0,
+        date: p.date ?? null,
+      }));
+    changed.push(...(await save(db, rows, now)));
     cur.from += NPM_PAGE;
     if (!objects.length || cur.from >= Math.min(total, NPM_SEARCH_MAX)) {
       cur = { k: (cur.k + 1) % KEYWORDS.length, from: 0 };
@@ -74,15 +89,79 @@ async function sync(db: D1Database): Promise<void> {
     db.prepare("INSERT INTO meta (key, value) VALUES ('cursor', ?1) ON CONFLICT (key) DO UPDATE SET value = ?1").bind(JSON.stringify(cur)),
     ...(wrapped ? [db.prepare(REFRESH_COUNTS)] : []),
   ]);
-  if (changed.length) {
-    // api.indexnow.org and bing.com return 429 to Cloudflare's shared egress IPs; Yandex accepts and shares with Bing.
-    const res = await fetch("https://yandex.com/indexnow", {
-      method: "POST",
-      headers: { "content-type": "application/json; charset=utf-8" },
-      body: JSON.stringify({ host: new URL(SITE).host, key: INDEXNOW_KEY, urlList: changed.map((n) => `${SITE}/packages/${n}`) }),
-    });
-    if (!res.ok) console.warn(`IndexNow ${res.status} for ${changed.length} URLs`);
+  return changed;
+}
+
+interface Latest {
+  version: string;
+  description?: string;
+  keywords?: unknown;
+  repository?: string | { url?: string };
+  _npmUser?: { name?: string };
+}
+
+// Search cannot reach packages ranked past NPM_SEARCH_MAX, so the change feed checks every npm publish.
+async function follow(db: D1Database, now: string): Promise<string[]> {
+  const saved = await db.prepare("SELECT value FROM meta WHERE key = 'seq'").first<string>("value");
+  let seq = saved ? Number(saved) : (await (await fetch(`${FEED}/`)).json<{ update_seq: number }>()).update_seq;
+  const changed: string[] = [];
+  const res = await fetch(`${FEED}/_changes?since=${seq}&limit=${FEED_MAX}`);
+  if (!res.ok) {
+    console.warn(`npm changes ${res.status} since ${seq}; resuming next run`);
+    return changed;
   }
+  const { results } = await res.json<{ results: { seq: number; id: string; deleted?: boolean }[] }>();
+  try {
+    for (let i = 0; i < results.length; i += FEED_BATCH) {
+      const batch = results.slice(i, i + FEED_BATCH);
+      const rows = await Promise.all(batch.map((c) => (c.deleted ? null : feedRow(c.id))));
+      changed.push(...(await save(db, rows.filter((r): r is Row => r !== null), now)));
+      seq = batch[batch.length - 1].seq;
+    }
+  } catch (e) {
+    console.warn(`npm changes stopped at ${seq}: ${e}; resuming next run`);
+  }
+  await db.prepare("INSERT INTO meta (key, value) VALUES ('seq', ?1) ON CONFLICT (key) DO UPDATE SET value = ?1").bind(String(seq)).run();
+  return changed;
+}
+
+async function feedRow(name: string): Promise<Row | null> {
+  const path = name.replace("/", "%2F");
+  const res = await fetch(`https://registry.npmjs.org/${path}/latest`);
+  if (res.status === 404) {
+    await res.body?.cancel();
+    return null;
+  }
+  if (!res.ok) throw new Error(`npm ${res.status} for ${name}`);
+  const m = await res.json<Latest>();
+  const keywords = Array.isArray(m.keywords) ? m.keywords.filter((k): k is string => typeof k === "string") : [];
+  if (!keywords.some((k) => KEYWORDS.includes(k))) return null;
+  const [doc, dl] = await Promise.all([fetch(`https://registry.npmjs.org/${path}`), fetch(`https://api.npmjs.org/downloads/point/last-month/${name}`)]);
+  if (!doc.ok) throw new Error(`npm ${doc.status} for ${name} document`);
+  const { time } = await doc.json<NpmDoc>();
+  // api.npmjs.org can return 429 to Cloudflare's shared IPs; null keeps the stored count so one miss does not stall the feed.
+  const downloads = dl.ok ? ((await dl.json<{ downloads?: number }>()).downloads ?? 0) : dl.status === 404 ? 0 : null;
+  return {
+    name,
+    version: m.version,
+    description: m.description ?? "",
+    keywords,
+    author: m._npmUser?.name ?? "",
+    repo: repoUrl(typeof m.repository === "string" ? m.repository : m.repository?.url),
+    downloads,
+    date: time?.[m.version] ?? null,
+  };
+}
+
+async function indexNow(changed: string[]): Promise<void> {
+  if (!changed.length) return;
+  // api.indexnow.org and bing.com return 429 to Cloudflare's shared egress IPs; Yandex accepts and shares with Bing.
+  const res = await fetch("https://yandex.com/indexnow", {
+    method: "POST",
+    headers: { "content-type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ host: new URL(SITE).host, key: INDEXNOW_KEY, urlList: changed.map((n) => `${SITE}/packages/${n}`) }),
+  });
+  if (!res.ok) console.warn(`IndexNow ${res.status} for ${changed.length} URLs`);
 }
 
 function repoUrl(raw?: string): string | null {
@@ -419,6 +498,7 @@ export default {
     return res;
   },
   async scheduled(_event, env): Promise<void> {
-    await sync(env.DB);
+    const now = new Date().toISOString();
+    await indexNow([...(await crawl(env.DB, now)), ...(await follow(env.DB, now))]);
   },
 } satisfies ExportedHandler<Env>;
