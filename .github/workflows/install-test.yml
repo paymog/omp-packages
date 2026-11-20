@@ -1,0 +1,70 @@
+name: Install test
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Publish even if many more packages fail than in the last run
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-test
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node tester/run.ts prepare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: top
+          path: tester/out/top.json
+
+  # This job runs third-party package code, so it gets no secrets.
+  test:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: top
+          path: tester/out
+      - run: node tester/run.ts test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results
+          path: tester/out/
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: results
+          path: tester/out
+      - run: node tester/run.ts publish
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          FORCE: ${{ inputs.force }}

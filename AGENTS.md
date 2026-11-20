@@ -29,6 +29,7 @@ One Cloudflare Worker (`src/index.ts`) with one D1 database. Pages are rendered 
 - `src/`: the Worker. `index.ts` (sync, router, handlers), `views.ts` (types, constants, HTML/Markdown/SVG renderers, CSS), `readme.ts` (README sanitizer).
 - `migrations/`: numbered D1 migrations (`NNNN_name.sql`). Append only, and they can migrate data (see 0002).
 - `public/`: static assets, served before the Worker runs: `robots.txt`, `llms.txt`, `_headers`, `og.png`, `favicon.svg`, and the IndexNow key file.
+- `tester/`: the daily install test (`.github/workflows/install-test.yml`). `run.ts` has three steps: `prepare` reads the top 200 from D1, `test` runs `probe.ts` in a Docker image per package with no secrets, and `publish` writes the reports through the D1 REST API. `src/sql.ts` holds the status SQL that both the Worker and the tester use, so it must not import Worker code.
 - `DESIGN.md`, `PRODUCT.md`, `.impeccable/design.json`: design and product docs. `src/views.ts` is the design source of truth.
 
 ## Development Commands
@@ -87,7 +88,8 @@ npm run deploy         # applies D1 migrations --remote, then wrangler deploy
 
 ## Testing & QA
 
-- There are no tests, test runner or CI. `npm run check` is the only automated gate. Run it after every change, including after a `wrangler.jsonc` change, so the bindings are regenerated.
+- There are no tests or test runner. `npm run check` is the only automated code gate. The only CI is the daily install test (`tester/`), which writes production D1. Run `npm run check` after every change, including after a `wrangler.jsonc` change, so the bindings are regenerated.
+- Run the install test locally: `CLOUDFLARE_API_TOKEN=… node tester/run.ts prepare`, then `node tester/run.ts test` (about 11 minutes, needs Docker). `publish` writes production D1, so run it only when asked. The token needs only Account › D1 › Edit.
 - Smoke test:
   1. Run `npm run dev`. The local D1 in `.wrangler/` already holds data.
   2. curl the routes you changed: `/`, `/search?q=mcp`, `/packages/<name>`, `/badge/<name>.svg`, `/browse/a`, `/report`, `/sitemap.xml`.

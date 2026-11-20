@@ -1,4 +1,5 @@
 import { renderReadme } from "./readme";
+import { OUR_TESTS, REFRESH_COUNTS, statusCase } from "./sql";
 import { BROWSE_KEYS, OMP_KEYWORDS, SCRIPT, SITE, SORTS, STATUS, TESTED_POOL, aboutPage, badge, browsePage, detailMarkdown, detailPage, esc, layout, listMarkdown, listPage, listingPage, messagePage, privacyPage, testReportPage, testSummary, type Extra, type Head, type ListView, type Pkg, type Report, type Status, type TestResult } from "./views";
 
 const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
@@ -170,15 +171,7 @@ function repoUrl(raw?: string): string | null {
   return url.startsWith("https://") ? url : null;
 }
 
-// Status precedence: broken reports beat everything; then the author's omp tag; then works reports.
-const statusCase = (source: string) =>
-  `CASE WHEN broken > works THEN 'broken' WHEN ${source} = 'omp' THEN 'native' WHEN works > 0 THEN 'works' ELSE 'untested' END`;
-// ponytail: catalog-wide counts refresh once per full crawl and on each report; live counts would scan every row per page view.
-const REFRESH_COUNTS = `INSERT INTO meta (key, value) SELECT 'counts', json_group_object(status, n) FROM (SELECT status, COUNT(*) AS n FROM packages GROUP BY status)
-  WHERE true ON CONFLICT (key) DO UPDATE SET value = excluded.value`;
 const STATUSES: Status[] = ["native", "works", "broken", "untested"];
-// Reporter id on reports written by our own install tests; real ip_hash values are hex digests, so it cannot collide.
-const OUR_TESTS = "omppackages-load-test";
 const SEARCH_CAP = 1000;
 
 async function list(db: D1Database, url: URL, md: boolean): Promise<Response> {
