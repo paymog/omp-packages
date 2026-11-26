@@ -83,6 +83,6 @@ const c = frames.find((f) => f.id === "c" && f.success);
 const s = frames.find((f) => f.id === "s" && f.success);
 out.commands = (c?.data?.commands ?? []).map((x) => `${x.source}:${x.name}`);
 out.tools = (s?.data?.dumpTools ?? []).map((t) => t.name);
-out.devices = [...JSON.stringify(s?.data?.systemPrompt ?? "").matchAll(/xd:\/\/([A-Za-z0-9_.-]+)|\\n- ([A-Za-z0-9_.-]+) — /g)].map((m) => m[1] ?? m[2]);
+out.devices = [...JSON.stringify(s?.data?.systemPrompt ?? "").matchAll(/xd:\/\/([A-Za-z0-9_.-]+)|\\n- `?([A-Za-z0-9_.-]+)`? — /g)].map((m) => m[1] ?? m[2]);
 out.errors = frames.filter((f) => f.type === "extension_error" || (f.type === "notice" && f.level === "error"));
 console.log(JSON.stringify(out));
