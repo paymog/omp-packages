@@ -6,7 +6,7 @@ omppackages.com is a catalog of oh-my-pi (omp) plugins. It also tracks whether p
 
 ## Architecture & Data Flow
 
-One Cloudflare Worker (`src/index.ts`) with one D1 database. Pages are rendered on the server from template strings. There is no framework. The only client-side JS is `SCRIPT`: the copy button plus the PostHog snippet (cookieless, `omppackages.com` only), which loads `posthog-js` from `*.posthog.com`.
+One Cloudflare Worker (`src/index.ts`) with one D1 database. Pages are rendered on the server from template strings. There is no framework. The only client-side JS is `SCRIPT`: the copy button plus the PostHog snippet (`omppackages.com` only, no session recording). PostHog loads and sends through the same-origin relay `ingest()` at `/ingest/*`, which `fetch()` handles before `route()`. `report()` also sends a server-side `report_submitted` event in production.
 
 - **Sync**: the cron (`*/30`) runs `crawl()` and then `follow()`.
   - `crawl()` reads up to 5 pages of 250 for one keyword and stores a resume cursor in `meta.cursor`, because npm search returns 429 on bursts. npm search ignores `from` past 5,000, so each keyword stops at 5,250 results (`NPM_SEARCH_MAX`). A full crawl takes about 3 hours. It refreshes downloads and finds high-ranked packages.
