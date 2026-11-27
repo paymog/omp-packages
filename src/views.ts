@@ -486,6 +486,7 @@ export function testSummary(rows: TestResult[]) {
 
 // First match wins; order goes from the most specific error text to the most general.
 const CAUSES: [RegExp, string][] = [
+  [/pi-tui", which omp no longer provides/, "Imports pi-tui, which omp no longer provides"],
   [/Export named '.+' not found in module/, "Imports a pi export that omp does not provide"],
   [/typebox|Type\.\w+ is not a function/, "Expects the TypeBox schema library that pi provides"],
   [/is not a function/, "Calls a pi API that omp does not have"],
@@ -519,7 +520,7 @@ export function testReportPage(rows: TestResult[]): string {
   <h2>Packages that fail <span class="quiet num">${s.broken}</span></h2>
   ${list("broken")}
   <h2>Add your result</h2>
-  <p>A pass shows only that a package loads. If a package works or fails for you, report it on its page; your report counts the same as ours. Authors of packages that pass can add the badge from their package page. It reads <img src="/badge/pi-mcp-adapter.svg" alt="omp: works · tested" height="20" style="vertical-align:middle">.</p>
+  <p>A pass shows only that a package loads. If a package works or fails for you, report it on its page; your report counts the same as ours. Authors of packages that pass can add the badge from their package page. It reads <img src="data:image/svg+xml,${encodeURIComponent(badge("works", true))}" alt="omp: works · tested" height="20" style="vertical-align:middle">.</p>
 </div>`;
 }
 
