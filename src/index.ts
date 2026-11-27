@@ -1,6 +1,6 @@
 import { renderReadme } from "./readme";
 import { OUR_TESTS, REFRESH_COUNTS, statusCase } from "./sql";
-import { BROWSE_KEYS, OMP_KEYWORDS, SCRIPT, SITE, SORTS, STATUS, TESTED_POOL, aboutPage, badge, browsePage, detailMarkdown, detailPage, esc, layout, listMarkdown, listPage, listingPage, messagePage, privacyPage, testReportPage, testSummary, type Extra, type Head, type ListView, type Pkg, type Report, type Status, type TestResult } from "./views";
+import { BROWSE_KEYS, OMP_KEYWORDS, POSTHOG_KEY, SCRIPT, SITE, SORTS, STATUS, TESTED_POOL, aboutPage, badge, browsePage, detailMarkdown, detailPage, esc, layout, listMarkdown, listPage, listingPage, messagePage, privacyPage, testReportPage, testSummary, type Extra, type Head, type ListView, type Pkg, type Report, type Status, type TestResult } from "./views";
 
 const KEYWORDS = [...OMP_KEYWORDS, "pi-package"];
 const NPM_PAGE = 250;
@@ -372,6 +372,10 @@ async function report(db: D1Database, req: Request, name: string, ctx: Execution
   ]);
   // Workers Caching serves pages without running the Worker; drop this package's pages and every list (counts changed).
   await ctx.cache?.purge({ tags: [`pkg:${name}`, "list"] });
+  if (new URL(req.url).hostname === "omppackages.com") {
+    const event = { api_key: POSTHOG_KEY, event: "report_submitted", distinct_id: crypto.randomUUID(), properties: { $host: "omppackages.com", $process_person_profile: false, package: name, status } };
+    ctx.waitUntil(fetch("https://us.i.posthog.com/i/v0/e/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(event) }).catch((e) => console.error(e)));
+  }
   return new Response(null, { status: 303, headers: { location: `/packages/${name}` } });
 }
 
@@ -427,7 +431,18 @@ async function browse(db: D1Database, key: string): Promise<Response> {
 let csp = "";
 async function initCsp(): Promise<void> {
   const hash = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(SCRIPT)))));
-  csp = `default-src 'none'; script-src 'sha256-${hash}' https://challenges.cloudflare.com https://*.posthog.com; connect-src https://*.posthog.com; frame-src https://challenges.cloudflare.com; style-src 'unsafe-inline'; img-src https: http: data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
+  csp = `default-src 'none'; script-src 'sha256-${hash}' 'self' https://challenges.cloudflare.com; connect-src 'self'; frame-src https://challenges.cloudflare.com; style-src 'unsafe-inline'; img-src https: http: data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
+}
+
+// Same-origin PostHog relay so ad blockers that block posthog.com hosts still let events through.
+async function ingest(req: Request, url: URL): Promise<Response> {
+  const rest = url.pathname.slice(7) || "/";
+  const host = rest.startsWith("/static/") || rest.startsWith("/array/") ? "us-assets.i.posthog.com" : "us.i.posthog.com";
+  const headers = new Headers(req.headers);
+  headers.delete("cookie");
+  if (!/^Bearer ph[csx]_/.test(headers.get("authorization") ?? "")) headers.delete("authorization");
+  headers.set("x-forwarded-for", req.headers.get("cf-connecting-ip") ?? "");
+  return fetch(`https://${host}${rest}${url.search}`, { method: req.method, headers, body: req.method === "GET" || req.method === "HEAD" ? null : await req.arrayBuffer() });
 }
 
 function html(title: string, body: string, status = 200, head: Head = {}): Response {
@@ -475,6 +490,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
 export default {
   async fetch(req, env, ctx): Promise<Response> {
     if (!csp) await initCsp();
+    const url = new URL(req.url);
+    if (url.pathname === "/ingest" || url.pathname.startsWith("/ingest/")) return ingest(req, url);
     let res: Response;
     try {
       res = await route(req, env, ctx);
