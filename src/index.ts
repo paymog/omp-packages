@@ -427,7 +427,7 @@ async function browse(db: D1Database, key: string): Promise<Response> {
 let csp = "";
 async function initCsp(): Promise<void> {
   const hash = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(SCRIPT)))));
-  csp = `default-src 'none'; script-src 'sha256-${hash}' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'unsafe-inline'; img-src https: http: data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
+  csp = `default-src 'none'; script-src 'sha256-${hash}' https://challenges.cloudflare.com https://*.posthog.com; connect-src https://*.posthog.com; frame-src https://challenges.cloudflare.com; style-src 'unsafe-inline'; img-src https: http: data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
 }
 
 function html(title: string, body: string, status = 200, head: Head = {}): Response {
