@@ -400,7 +400,9 @@ export function aboutPage(): string {
 export function privacyPage(): string {
   return `<div class="wrap prose">
   <h1>Privacy</h1>
-  <p class="lede">omp packages sets no cookies, runs no analytics, and has no accounts.</p>
+  <p class="lede">omp packages sets no cookies and has no accounts. It counts page views and clicks with PostHog in cookieless mode.</p>
+  <h2>Analytics</h2>
+  <p>The site sends page views, clicks, and page speed to <a href="https://posthog.com">PostHog</a>. PostHog runs in cookieless mode: it stores nothing in your browser and tells visitors apart with a hash that it resets each day, so it cannot follow you from one day to the next.</p>
   <h2>Reports</h2>
   <p>When you report whether a package works, the site stores the result, the version you entered, your note, and the time. To allow one report per person per package, it also stores a SHA-256 hash of your IP address combined with the package name. The site never stores the IP address itself, and the hash cannot be matched to the same IP address on a different package.</p>
   <h2>What is public</h2>
@@ -733,7 +735,9 @@ main{padding-top:1.5rem}
 .choice label{max-width:none}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}`;
 
-export const SCRIPT = `document.addEventListener("click",e=>{const b=e.target.closest("[data-copy]");if(!b)return;const l=b.querySelector("span"),t=l.textContent,live=document.getElementById("live"),done=(s,m)=>{b.dataset.state=s;l.textContent=m;live.textContent=m;setTimeout(()=>{delete b.dataset.state;l.textContent=t},1600)};navigator.clipboard.writeText(b.dataset.copy).then(()=>done("copied","Copied"),()=>done("failed","Copy failed"))})`;
+export const SCRIPT = `document.addEventListener("click",e=>{const b=e.target.closest("[data-copy]");if(!b)return;const l=b.querySelector("span"),t=l.textContent,live=document.getElementById("live"),done=(s,m)=>{b.dataset.state=s;l.textContent=m;live.textContent=m;setTimeout(()=>{delete b.dataset.state;l.textContent=t},1600)};navigator.clipboard.writeText(b.dataset.copy).then(()=>done("copied","Copied"),()=>done("failed","Copy failed"))});
+if(location.hostname==="omppackages.com"){!function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],Object.defineProperty(u,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e}}),Object.defineProperty(u.people,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(){return u.toString(1)+".people (stub)"}}),o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagResult isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+posthog.init("phc_tKPdhXGgXF5ycrJQX3JzkAPXfJQPGtZCDWcpmUjG6nkB",{api_host:"https://us.i.posthog.com",defaults:"2026-08-30",cookieless_mode:"always",disable_session_recording:true})}`;
 
 export interface Head {
   description?: string;
